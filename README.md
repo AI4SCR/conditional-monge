@@ -1,4 +1,4 @@
-# Learning Drug Perturbations via Conditional Map Estimators
+# Conditional Monge Gap
 
 ![](assets/overview.jpg)
 
@@ -6,7 +6,7 @@ An extension of the [Monge Gap](https://arxiv.org/abs/2302.04953), an approach t
 
 ## Environment setup
 
-The environemnt is managed with [poetry](https://python-poetry.org/docs/managing-environments/). We recommend setting up a virtual environment. The code was tested in Python 3.10.
+The environment is managed with [poetry](https://python-poetry.org/docs/managing-environments/). We recommend setting up a virtual environment. The code was tested in Python 3.10.
 ```sh
 pip install poetry
 poetry install -v
