@@ -1,0 +1,10 @@
+data:
+   name: sciplex
+   file_path: cmonge/tests/configs/test.h5ad
+   batch_size: 2
+   split: [0.8, 0.2]
+   seed: 42
+   drug_col: drug-dose
+   drug_condition: givinostat-10
+   control_condition: control-0
+   ae: false

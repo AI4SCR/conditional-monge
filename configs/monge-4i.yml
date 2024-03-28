@@ -1,0 +1,35 @@
+data:
+  name: 4i
+  file_path: /dccstor/storage01/datasets/4i/8h.h5ad
+  drugs_path: /dccstor/storage01/datasets/4i/drugs.txt
+  features: /dccstor/storage01/datasets/4i/features.txt
+  batch_size: 256
+  split: [0.8, 0.2]
+  drug_col: drug
+  drug_conditions: ixazomib
+  control_condition: control
+  ae: false
+
+model:
+  method: monge
+
+  fitting_loss:
+    name: sinkhorn
+    kwargs:
+      epsilon_fitting: 1
+
+  regularizer:
+    name: monge
+    kwargs:
+      epsilon_regularizer: 1.0e-2
+      cost: euclidean
+
+  optim:
+    lr: 1.0e-4
+    name: adamw
+    kwargs:
+      weight_decay: 1.0e-5
+
+  dim_hidden: [64, 64, 64, 64]
+  num_genes: 48
+  num_train_iters: 5000

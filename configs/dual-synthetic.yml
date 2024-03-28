@@ -1,0 +1,39 @@
+data:
+  name: synthetic_sqrt
+  split: [0.6, 0.2, 0.2]
+  drug_col: drug
+  drug_condition: function
+  control_condition: control
+  batch_size: 512
+  seed: 42
+  ae: false
+  config:
+    scpg_kwargs:
+        mu_kwargs:
+          ngenes: 10
+          ncells: 10000
+          seed: 42
+        nu: resample
+        perturbation_kwargs:
+          function:
+             invroot:
+              root: 60
+              scale: 1000
+          perturbed_cells: 0.9
+          perturbed_genes:
+            fraction: 0.9
+            min_amp: 1
+            max_amp: 1
+
+    perturb:
+      invroot:
+        root: 60
+        scale: 100
+
+model:
+    method: dual
+    dim_hidden: [64, 64, 64, 64]
+    lr: 1.0e-4
+    num_genes: 10
+    num_inner_iters: 1
+    num_train_iters: 1000

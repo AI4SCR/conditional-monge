@@ -1,0 +1,31 @@
+data:
+  name: 4i
+  file_path: /dccstor/storage01/datasets/4i/8h.h5ad
+  drugs_path: /dccstor/storage01/datasets/4i/drugs.txt
+  features: /dccstor/storage01/datasets/4i/features.txt
+  batch_size: 256
+  split: [0.8, 0.2]
+  drug_col: drug
+  drug_condition: ixazomib
+  control_condition: control
+  ae: false
+  seed: 1
+
+model:
+    method: dual
+    dim_hidden: [64, 64, 64, 64]
+    lr: 1.0e-4
+    num_genes: 48
+    num_inner_iters: 10
+    num_train_iters: 1000
+
+
+
+# data:
+#     path: /dccstor/storage01/datasets/scrna-sciplex3/hvg.h5ad
+#     batch_size: 512
+#     reduction: ae
+#     split: [0.6, 0.2, 0.2]
+#     drug_col: drug-dosage
+#     drug_condition: unc1999-1000
+#     control_condition: control-0

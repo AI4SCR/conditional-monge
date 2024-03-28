@@ -1,0 +1,48 @@
+data:
+  name: synthetic_sqrt
+  split: [0.6, 0.2, 0.2]
+  batch_size: 512
+  seed: 42
+  ae: true
+  drug_col: drug
+  control_condition: control
+  drug_condition: function
+  config:
+    scpg_kwargs:
+        mu_kwargs:
+          ngenes: 10
+          ncells: 10000
+          seed: 42
+        nu: resample
+        perturbation_kwargs:
+          function:
+             invroot:
+              root: 60
+              scale: 100
+          perturbed_cells: 0.9
+          perturbed_genes:
+            fraction: 0.9
+            min_amp: 1
+            max_amp: 1
+
+    perturb:
+      invroot:
+        root: 60
+        scale: 100
+
+model:
+   hidden_dims: [32, 32]
+   latent_dim: 8
+   data_dim: 10
+   seed: 42
+   act_fn: gelu
+
+optim:
+   lr: 1.0e-3
+   optimizer: adamw
+   kwargs:
+      weight_decay: 1.0e-5
+
+training:
+  n_epochs: 30
+  model_dir: models/

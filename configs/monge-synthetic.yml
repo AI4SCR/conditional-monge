@@ -1,0 +1,41 @@
+data:
+  name: synthetic_sqrt
+  split: [0.6, 0.2, 0.2]
+  batch_size: 256
+  seed: 42
+  ae: false
+  drug_col: drug
+  control_condition: control
+  drug_condition: function
+  config:
+    scpg_kwargs:
+        mu_kwargs:
+          ngenes: 10
+          ncells: 10000
+          seed: 42
+        nu: resample
+        perturbation_kwargs:
+          function:
+             invroot:
+              root: 60
+              scale: 100
+          perturbed_cells: 0.5
+          perturbed_genes:
+            fraction: 0.5
+            min_amp: 1
+            max_amp: 1
+
+    perturb:
+      invroot:
+        root: 60
+        scale: 100
+
+model:
+    method: monge
+    epsilon_fitting: 1
+    epsilon_regularizer: 1.0e-2
+    dim_hidden: [64, 64, 64, 64]
+    num_genes: 10
+    cost: euclidean
+    num_train_iters: 1000
+    lr: 1.0e-4

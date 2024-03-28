@@ -1,0 +1,50 @@
+data:
+   name: sciplex
+   file_path: /dccstor/storage01/datasets/scrna-sciplex3/hvg.h5ad
+   batch_size: 512
+   split:
+   drug_col: drug-dose
+   drug_condition: givinostat
+   control_condition: control-0
+   ae: True
+   seed: 42
+   reduction: ae
+   ae_config_path: /u/hbenedek/repos/ot-perturb/configs/autoencoder-sciplex.yml
+
+condition:
+   mode: random
+   conditions: [givinostat-10, givinostat-100, givinostat-1000, givinostat-10000]
+   split: [[givinostat-10, givinostat-100, givinostat-1000], [givinostat-10000], []]
+
+
+ae:
+   model:
+      hidden_dims: [512, 512]
+      latent_dim: 50
+      data_dim: 1000
+      seed: 1
+      act_fn: gelu
+
+   optim:
+      lr: 1.0e-4
+      optimizer: adamw
+      kwargs:
+         weight_decay: 1.0e-5
+
+   training:
+      n_epochs: 50
+      ckpt: false
+      model_dir: models/cond/
+
+
+model:
+    method: dual
+    dim_hidden: [64, 64, 64, 64]
+    lr: 1.0e-4
+    num_genes: 50
+    num_inner_iters: 10
+    num_train_iters: 20000
+    seed: 42
+    cond_dim: 1
+    pos_weights: false
+    embedding: dosage

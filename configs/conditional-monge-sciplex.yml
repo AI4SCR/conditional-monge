@@ -1,0 +1,75 @@
+model:
+  method: monge
+
+  fitting_loss:
+    name: sinkhorn
+    kwargs:
+      epsilon_fitting: 1
+
+  regularizer:
+    name: monge
+    kwargs:
+      epsilon_regularizer: 1.0e-2
+      cost: euclidean
+
+  optim:
+    lr: 1.0e-4
+    name: adamw
+    kwargs:
+      weight_decay: 1.0e-5
+
+  mlp:
+    dim_hidden: [64, 64, 64, 64]
+    dim_data: 50
+    dim_cond: 50
+
+  embedding:
+    name: rdkit
+    smile_path: /u/hbenedek/repos/ot-perturb/lincs_trapnell.smiles
+    drug_to_smile_path: /u/hbenedek/repos/ot-perturb/trapnell_drugs_smiles.csv
+    model_dir: models/embed/
+    checkpoint: true
+
+  num_train_iters: 10000
+  seed: 42
+
+
+data:
+   name: sciplex
+   file_path: /dccstor/storage01/datasets/scrna-sciplex3/hvg.h5ad
+   batch_size: 512
+   split: [0.8, 0.2]
+   drug_col: drug-dose
+   drug_condition: givinostat
+   control_condition: control-0
+   ae: False
+   seed: 42
+   reduction: ae
+   ae_config_path: /u/hbenedek/repos/ot-perturb/configs/autoencoder-sciplex.yml
+
+
+condition:
+  mode: homogeneous
+  conditions: [givinostat-10, givinostat-100, givinostat-1000, givinostat-10000]
+  split: [0.8, 0.2]
+
+
+ae:
+   model:
+      hidden_dims: [512, 512]
+      latent_dim: 50
+      data_dim: 1000
+      seed: 1
+      act_fn: gelu
+
+   optim:
+      lr: 1.0e-4
+      optimizer: adamw
+      kwargs:
+         weight_decay: 1.0e-5
+
+   training:
+      n_epochs: 50
+      valid: false
+      ckpt: false
+      model_dir: models/cond/
