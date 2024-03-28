@@ -1,5 +1,4 @@
-name: Python linting
-
+name: CI
 on:
   push:
     branches: [main]
