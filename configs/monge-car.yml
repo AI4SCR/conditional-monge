@@ -1,8 +1,8 @@
 data:
   name: car
-  file_path: /dccstor/ipc1/CAR/Data/D09D17/20240229_from_rocio_for_manuscript.h5ad
-  drugs_path: /dccstor/ipc1/CAR/Model/conditional-monge/CAR_variants.txt
-  features: /dccstor/ipc1/CAR/Model/conditional-monge/functional_genes.txt
+  file_path: data/20240229_from_rocio_for_manuscript.h5ad
+  drugs_path: data/CAR_variants.txt
+  features: data/functional_genes.txt
   batch_size: 256
   split: [0.7, 0.2, 0.1]
   drug_col: CAR_Variant
@@ -38,7 +38,7 @@ model:
 
   early_stopping: true
   checkpointing_args:
-    checkpoint_dir: "/dccstor/ipc1/CAR/Model/conditional-monge/Outputs/Test/"
+    checkpoint_dir: Outputs/Test/
     checkpoint_crit: sinkhorn_div
 
 mlflow:

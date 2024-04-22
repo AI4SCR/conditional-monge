@@ -15,7 +15,7 @@ def get_environ_var(env_var_name, fail_gracefully=True):
     try:
         assert (
             env_var_name in os.environ
-        ), f"Environment variable ${env_var_name} not set, are you on a CCC job?"
+        )
         var = os.environ[env_var_name]
     except AssertionError:
         if not fail_gracefully:
