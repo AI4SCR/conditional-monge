@@ -1,6 +1,7 @@
 from typing import Any, Dict
 
 import jax.numpy as jnp
+import mlflow
 from cmonge.metrics import (
     average_r2,
     compute_scalar_mmd,
@@ -25,13 +26,25 @@ def init_logger_dict(metrics: Dict[str, Any], drug) -> Dict[str, Any]:
     return metrics
 
 
-def log_metrics(metrics, target, transport):
+def log_metrics(metrics, target, transport, mlflow_logging: bool = False):
     w_dist = wasserstein_distance(target, transport)
     mmd_dist = compute_scalar_mmd(target, transport)
     sh_div = sinkhorn_div(target, transport)
     monge_gap = eucledian_monge_gap(target, transport)
     ds = drug_signature(target, transport)
     r2 = average_r2(target, transport)
+
+    if mlflow_logging:
+        mlflow.log_metrics(
+            {
+                "wasserstein": w_dist,
+                "mmd": mmd_dist,
+                "sinkhorn_div": sh_div,
+                "monge_gap": monge_gap,
+                "drug_signature": ds,
+                "r2": r2,
+            }
+        )
 
     metrics["wasserstein"].append(w_dist)
     metrics["mmd"].append(mmd_dist)
@@ -47,16 +60,29 @@ def log_point_clouds(metrics, source, target, transport):
     metrics["point_clouds"]["transport"].append(transport)
 
 
-def log_mean_metrics(metrics):
-    metrics["mean_statistics"]["mean_wasserstein"] = float(sum(metrics["wasserstein"]) / len(metrics["wasserstein"]))
-    metrics["mean_statistics"]["mean_mmd"] = float(sum(metrics["mmd"]) / len(metrics["mmd"]))
-    metrics["mean_statistics"]["mean_sinkhorn div"] = float(sum(metrics["sinkhorn_div"]) / len(metrics["sinkhorn_div"]))
-    metrics["mean_statistics"]["mean_monge_gap"] = float(sum(metrics["monge_gap"]) / len(metrics["monge_gap"]))
+def log_mean_metrics(metrics, mlflow_logging: bool = False):
+    metrics["mean_statistics"]["mean_wasserstein"] = float(
+        sum(metrics["wasserstein"]) / len(metrics["wasserstein"])
+    )
+    metrics["mean_statistics"]["mean_mmd"] = float(
+        sum(metrics["mmd"]) / len(metrics["mmd"])
+    )
+    metrics["mean_statistics"]["mean_sinkhorn div"] = float(
+        sum(metrics["sinkhorn_div"]) / len(metrics["sinkhorn_div"])
+    )
+    metrics["mean_statistics"]["mean_monge_gap"] = float(
+        sum(metrics["monge_gap"]) / len(metrics["monge_gap"])
+    )
     metrics["mean_statistics"]["mean_drug_signature"] = float(
         sum(metrics["drug_signature"]) / len(metrics["drug_signature"])
     )
-    metrics["mean_statistics"]["mean_r2"] = float(sum(metrics["r2"]) / len(metrics["r2"]))
+    metrics["mean_statistics"]["mean_r2"] = float(
+        sum(metrics["r2"]) / len(metrics["r2"])
+    )
     logger.info(metrics["mean_statistics"])
+
+    if mlflow_logging:
+        mlflow.log_metrics(metrics["mean_statistics"])
 
 
 def get_single_loaders_for_eval(datamodule, split):

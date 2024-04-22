@@ -8,6 +8,22 @@ import optax
 import yaml
 from dotmap import DotMap
 from flax import linen as nn
+from jax._src.typing import Array
+
+
+def get_environ_var(env_var_name, fail_gracefully=True):
+    try:
+        assert (
+            env_var_name in os.environ
+        ), f"Environment variable ${env_var_name} not set, are you on a CCC job?"
+        var = os.environ[env_var_name]
+    except AssertionError:
+        if not fail_gracefully:
+            raise
+        else:
+            var = None
+
+    return var
 
 
 def jax_serializer(obj):
@@ -37,6 +53,35 @@ def load_config(path: Path) -> DotMap[str, Any]:
         yaml_data = yaml.safe_load(file)
     yaml_data = DotMap(yaml_data)
     return yaml_data
+
+
+def flatten(dictionary, parent_key="", separator="."):
+    items = []
+    for key, value in dictionary.items():
+        new_key = parent_key + separator + key if parent_key else key
+        if isinstance(value, DotMap):
+            items.extend(flatten(value, new_key, separator=separator).items())
+        else:
+            items.append((new_key, value))
+    return dict(items)
+
+
+def flatten_metrics(dictionary, parent_key="", separator="."):
+    items = []
+    for key, value in dictionary.items():
+        if isinstance(value, Array):
+            value = float(value)
+        elif isinstance(value, list):
+            if isinstance(value[0], Array):
+                value = [float(i) for i in Array]
+
+        new_key = parent_key + separator + key if parent_key else key
+
+        if isinstance(value, dict):
+            items.extend(flatten_metrics(value, new_key, separator=separator).items())
+        else:
+            items.append((new_key, value))
+    return dict(items)
 
 
 optim_factory = {"adamw": optax.adamw, "adam": optax.adam, "sgd": optax.sgd}

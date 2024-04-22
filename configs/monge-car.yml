@@ -1,0 +1,45 @@
+data:
+  name: car
+  file_path: /dccstor/ipc1/CAR/Data/D09D17/20240229_from_rocio_for_manuscript.h5ad
+  drugs_path: /dccstor/ipc1/CAR/Model/conditional-monge/CAR_variants.txt
+  features: /dccstor/ipc1/CAR/Model/conditional-monge/functional_genes.txt
+  batch_size: 256
+  split: [0.7, 0.2, 0.1]
+  drug_col: CAR_Variant
+  drug_condition: IL15RA-CD28-z
+  control_condition: NA-NA-NA
+  ae: false
+  seed: 42
+
+model:
+  method: monge
+
+  fitting_loss:
+    name: sinkhorn
+    kwargs:
+      epsilon_fitting: 1
+
+  regularizer:
+    name: monge
+    kwargs:
+      epsilon_regularizer: 1.0e-2
+      cost: euclidean
+
+  optim:
+    lr: 1.0e-4
+    name: adamw
+    kwargs:
+      weight_decay: 1.0e-5
+
+  dim_hidden: [64, 64, 64, 64]
+  num_genes: 77
+  num_train_iters: 12
+  mlflow_logging: false
+
+  early_stopping: true
+  checkpointing_args:
+    checkpoint_dir: "/dccstor/ipc1/CAR/Model/conditional-monge/Outputs/Test/"
+    checkpoint_crit: sinkhorn_div
+
+mlflow:
+  experiment_name: "test"
