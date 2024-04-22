@@ -12,8 +12,12 @@ mypy = "*"
 pytest = "*"
 pre-commit = "*"
 
+
+[tool.poetry.group.mlflow.dependencies]
+notebook = "^7.1.2"
+
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.10,<3.11"
 flax = "0.7.4"
 optax = "0.1.9"
 ott-jax = "0.4.4"
@@ -31,6 +35,8 @@ scanpy = "^1.9.8"
 chex = "^0.1.85"
 rdkit = "^2023.9.5"
 jax = "0.4.20"
+mlflow = "^2.11.3"
+app-tunnel = {git = "ssh://git@github.ibm.com/DEU/app_tunnel.git", rev = "main"}
 
 [[tool.poetry.source]]
 name = "jax"
