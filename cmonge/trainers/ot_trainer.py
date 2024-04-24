@@ -28,7 +28,9 @@ from orbax.checkpoint.args import StandardSave
 class AbstractTrainer:
     """Abstract class for neural OT traininig."""
 
-    def __init__(self, jobid: int, logger_path: Path) -> None:
+    def __init__(
+        self, jobid: int, logger_path: Path, mlflow_logging: bool = False
+    ) -> None:
         self.jobid = jobid
         self.logger_path = logger_path
         self.metrics: Dict[str, Any] = {}
@@ -153,6 +155,7 @@ class MongeMapTrainer(AbstractTrainer):
         }
 
         # Save for use in `evaluate`
+        # Potentially overwrite AbstractTrainer attribute
         self.mlflow_logging = mlflow_logging
 
         # setup loss function and regularizer
@@ -176,6 +179,7 @@ class MongeMapTrainer(AbstractTrainer):
 
         # setup ott-jax solver
         if not early_stopping:
+            logger.warning("MLFlow logging not implemented for standard MapEstimator")
             self.solver = map_estimator.MapEstimator(
                 num_genes,
                 fitting_loss=fitting_loss,
@@ -185,7 +189,7 @@ class MongeMapTrainer(AbstractTrainer):
                 regularizer_strength=1,
                 num_train_iters=num_train_iters,
                 logging=True,
-                valid_freq=100,  # mlflow logging not implemented here
+                valid_freq=100,
             )
         else:
             if checkpoint_manager is None:
