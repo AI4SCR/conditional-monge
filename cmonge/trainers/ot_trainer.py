@@ -35,6 +35,7 @@ class AbstractTrainer:
         self.logger_path = logger_path
         self.metrics: Dict[str, Any] = {}
         self.metrics["jobid"] = jobid
+        self.mlflow_logging = mlflow_logging
         device = xla_bridge.get_backend().platform
         logger.info(f"JAX uses {device} for trianing.")
 
@@ -121,9 +122,10 @@ class MongeMapTrainer(AbstractTrainer):
         jobid: int,
         logger_path: Path,
         config: DotMap,
+        mlflow_logging: bool = False,
         checkpoint_manager: CheckpointManager = None,
     ) -> None:
-        super().__init__(jobid, logger_path)
+        super().__init__(jobid, logger_path, mlflow_logging)
         self.setup(**config, checkpoint_manager=checkpoint_manager)
 
     def setup(
@@ -137,7 +139,6 @@ class MongeMapTrainer(AbstractTrainer):
         optim: Dict[str, Any],
         early_stopping: bool = False,
         checkpointing_args: Optional[DotMap] = None,
-        mlflow_logging: bool = False,
         checkpoint_manager: Optional[CheckpointManager] = None,
         checkpoint_crit: Literal[
             "sinkhorn_dic", "monge_gap", "total_loss"
@@ -153,10 +154,6 @@ class MongeMapTrainer(AbstractTrainer):
             "lr": optim.lr,
             "method": method,
         }
-
-        # Save for use in `evaluate`
-        # Potentially overwrite AbstractTrainer attribute
-        self.mlflow_logging = mlflow_logging
 
         # setup loss function and regularizer
         fitting_loss_fn = loss_factory[fitting_loss.name]
