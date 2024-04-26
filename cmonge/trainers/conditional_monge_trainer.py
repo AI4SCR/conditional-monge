@@ -24,7 +24,13 @@ from loguru import logger
 
 
 class ConditionalMongeTrainer(AbstractTrainer):
-    def __init__(self, jobid: int, logger_path: Path, config: DotMap, datamodule: ConditionalDataModule) -> None:
+    def __init__(
+        self,
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        datamodule: ConditionalDataModule,
+    ) -> None:
         super().__init__(jobid, logger_path)
         self.config = config
         self.datamodule = datamodule
@@ -45,26 +51,38 @@ class ConditionalMongeTrainer(AbstractTrainer):
         # setup optimizer and scheduler
         opt_fn = optim_factory[self.config.optim.name]
         lr_scheduler = optax.cosine_decay_schedule(
-            init_value=self.config.optim.lr, decay_steps=self.num_train_iters, alpha=1e-2
+            init_value=self.config.optim.lr,
+            decay_steps=self.num_train_iters,
+            alpha=1e-2,
         )
         optimizer = opt_fn(learning_rate=lr_scheduler, **self.config.optim.kwargs)
 
-        self.neural_net = ConditionalPerturbationNetwork(**self.config.mlp)  # TODO: create embedding and model factory
+        self.neural_net = ConditionalPerturbationNetwork(
+            **self.config.mlp
+        )  # TODO: create embedding and model factory
 
         embed_module = embed_factory[self.config.embedding.name]
-        self.embedding_module = embed_module(datamodule=datamodule, **self.config.embedding)
+        self.embedding_module = embed_module(
+            datamodule=datamodule, **self.config.embedding
+        )
 
         self.step_fn = self._get_step_fn()
         self.key, rng = jax.random.split(self.key, 2)
         self.state_neural_net = self.neural_net.create_train_state(rng, optimizer)
 
-    def generate_batch(self, datamodule: ConditionalDataModule, split_type: str) -> Dict[str, jnp.ndarray]:
+    def generate_batch(
+        self, datamodule: ConditionalDataModule, split_type: str
+    ) -> Dict[str, jnp.ndarray]:
         """Generate a batch of condition and samples."""
         condition_to_loaders = datamodule.get_loaders_by_type(split_type)
         condition = datamodule.sample_condition(split_type)
         loader_source, loader_target = condition_to_loaders[condition]
         embeddings = self.embedding_module(condition)
-        return {"source": next(loader_source), "target": next(loader_target), "condition": embeddings}
+        return {
+            "source": next(loader_source),
+            "target": next(loader_target),
+            "condition": embeddings,
+        }
 
     def update_logs(self, current_logs, logs, tbar):
         # store and print metrics if logging step
@@ -95,7 +113,11 @@ class ConditionalMongeTrainer(AbstractTrainer):
         for step in tbar:
             is_logging_step = step % 100 == 0
             train_batch = self.generate_batch(datamodule, "train")
-            valid_batch = None if not is_logging_step else self.generate_batch(datamodule, "valid")
+            valid_batch = (
+                None
+                if not is_logging_step
+                else self.generate_batch(datamodule, "valid")
+            )
 
             self.state_neural_net, current_logs = self.step_fn(
                 self.state_neural_net, train_batch, valid_batch, is_logging_step
@@ -117,7 +139,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
         ) -> Tuple[float, Dict[str, float]]:
             """Loss function."""
             # map samples with the fitted map
-            mapped_samples = apply_fn({"params": params}, batch["source"], batch["condition"])
+            mapped_samples = apply_fn(
+                {"params": params}, batch["source"], batch["condition"]
+            )
 
             # compute the loss
             val_fitting_loss = self.fitting_loss(batch["target"], mapped_samples)
@@ -143,13 +167,17 @@ class ConditionalMongeTrainer(AbstractTrainer):
             """Step function."""
             # compute loss and gradients
             grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
-            (_, current_train_logs), grads = grad_fn(state_neural_net.params, state_neural_net.apply_fn, train_batch)
+            (_, current_train_logs), grads = grad_fn(
+                state_neural_net.params, state_neural_net.apply_fn, train_batch
+            )
 
             # logging step
             current_logs = {"train": current_train_logs, "eval": {}}
             if is_logging_step:
                 _, current_eval_logs = loss_fn(
-                    params=state_neural_net.params, apply_fn=state_neural_net.apply_fn, batch=valid_batch
+                    params=state_neural_net.params,
+                    apply_fn=state_neural_net.apply_fn,
+                    batch=valid_batch,
                 )
                 current_logs["eval"] = current_eval_logs
 
@@ -159,7 +187,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
         return step_fn
 
     def transport(self, x, c):
-        return self.state_neural_net.apply_fn({"params": self.state_neural_net.params}, x, c)
+        return self.state_neural_net.apply_fn(
+            {"params": self.state_neural_net.params}, x, c
+        )
 
     def evaluate(
         self,
@@ -193,7 +223,10 @@ class ConditionalMongeTrainer(AbstractTrainer):
                     break
 
         def evaluate_split(
-            cond_to_loaders: Dict[str, Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]], split_type: str
+            cond_to_loaders: Dict[
+                str, Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]
+            ],
+            split_type: str,
         ):
             self.metrics[split_type] = {}
             for cond, loader in cond_to_loaders.items():
@@ -202,8 +235,15 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}
-                init_logger_dict(self.metrics[split_type][cond], datamodule.drug_condition)
-                evaluate_condition(loader_source, loader_target, cond_embedding, self.metrics[split_type][cond])
+                init_logger_dict(
+                    self.metrics[split_type][cond], datamodule.drug_condition
+                )
+                evaluate_condition(
+                    loader_source,
+                    loader_target,
+                    cond_embedding,
+                    self.metrics[split_type][cond],
+                )
                 log_mean_metrics(self.metrics[split_type][cond])
 
         # cond_to_loaders = datamodule.train_dataloaders()
