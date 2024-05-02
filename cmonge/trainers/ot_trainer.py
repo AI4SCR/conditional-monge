@@ -146,11 +146,11 @@ class MongeMapTrainer(AbstractTrainer):
         fitting_loss: Dict[str, Any],
         regularizer: Dict[str, Any],
         optim: Dict[str, Any],
-        early_stopping: bool = False,
+        checkpointing: bool = False,
         checkpointing_args: Optional[DotMap] = None,
         checkpoint_manager: Optional[CheckpointManager] = None,
         checkpoint_crit: Literal[
-            "sinkhorn_dic", "monge_gap", "total_loss"
+            "sinkhorn_div", "monge_gap", "total_loss"
         ] = "sinkhorn_div",
     ) -> None:
         """Initializes models and optimizers."""
@@ -184,7 +184,7 @@ class MongeMapTrainer(AbstractTrainer):
         optimizer = opt_fn(learning_rate=lr_scheduler, **optim.kwargs)
 
         # setup ott-jax solver
-        if not early_stopping:
+        if not checkpointing:
             logger.warning("MLFlow logging not implemented for standard MapEstimator")
             self.solver = map_estimator.MapEstimator(
                 num_genes,
@@ -282,7 +282,7 @@ class MongeMapTrainer(AbstractTrainer):
 
         self.state = self.solver.state_neural_net
 
-        logger.info("Loaded checkpoint")
+        logger.info("Loaded MongeMapTrainer from checkpoint")
 
 
 class NeuralDualTrainer(AbstractTrainer):

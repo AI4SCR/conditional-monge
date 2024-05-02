@@ -87,9 +87,10 @@ class ConditionalDataModule:
         return loader.marker_idx
 
     def reducer(self):
-        trainer = AETrainerModule(self.ae_config)
+        trainer = AETrainerModule(self.ae_config, self)
         print(self.name, self.drug_condition)
-        trainer.load_model(self.name, self.drug_condition)
+        if not trainer.is_trained:
+            trainer.load_model(self.name, self.drug_condition)
         self.data_config.parent_reducer = trainer
 
     def splitter(self):
