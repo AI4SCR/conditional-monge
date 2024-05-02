@@ -1,0 +1,19 @@
+flax==0.7.4
+--find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+jax[cuda12_pip]==0.4.20
+jaxlib==0.4.20+cuda12.cudnn89
+numpy==1.22.0
+optax==0.1.9
+ott-jax==0.4.4
+scikit-learn==1.4.0
+typer
+loguru
+optuna==3.5.0
+numpy
+pandas
+scanpy
+seaborn
+dotmap
+umap-learn
+umap-learn[plot]
+orbax-checkpoint==0.5.7
