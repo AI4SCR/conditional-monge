@@ -34,14 +34,14 @@ class DoseEmbedding(BaseEmbedding):
 class RDKitEmbedding(BaseEmbedding):
     def __init__(
         self,
-        batch_size: int,
         checkpoint: bool,
         smile_path: str,
         drug_to_smile_path: str,
         name: str,
         model_dir: str,
+        datamodule: ConditionalDataModule,
     ) -> None:
-        super().__init__(batch_size)
+        super().__init__(datamodule.batch_size)
         self.smile_path = Path(smile_path)
         self.drug_to_smile_path = Path(drug_to_smile_path)
         self.model_dir = Path(model_dir)
@@ -125,7 +125,12 @@ class RDKitEmbedding(BaseEmbedding):
 
 
 class ModeOfActionEmbedding(BaseEmbedding):
-    def __init__(self, datamodule: ConditionalDataModule, checkpoint: bool, name: str, model_dir: str) -> None:
+    def __init__(self, 
+        datamodule: ConditionalDataModule, 
+        checkpoint: bool, 
+        name: str, 
+        model_dir: str, 
+    ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
         if not checkpoint:

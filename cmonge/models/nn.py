@@ -301,7 +301,8 @@ class ConditionalPerturbationNetwork(ModelBase):
         drug_embedding, _ = c[:, :-1], c[:, -1]
 
         Sc = nn.Dense(1, use_bias=True)
-        dose_embedding = self.act_fn(Sc(c))
+        a = Sc(c)
+        dose_embedding = self.act_fn(a)
         M = nn.Dense(self.dim_cond, use_bias=True)
         drug_embedding = self.act_fn(M(drug_embedding))
 
@@ -332,7 +333,7 @@ class ConditionalPerturbationNetwork(ModelBase):
         **kwargs: Any,
     ) -> NeuralTrainState:
         """Create initial `TrainState`."""
-        c = jnp.ones((1, 11))
+        c = jnp.ones((1, self.dim_cond)) # TODO make dim depended on encoding strategy
         x = jnp.ones((1, self.dim_data))
         params = self.init(rng, x=x, c=c)["params"]
         return NeuralTrainState.create(
