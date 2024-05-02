@@ -13,7 +13,9 @@ from cmonge.metrics import (
 from loguru import logger
 
 
-def init_logger_dict(metrics: Dict[str, Any], drug) -> Dict[str, Any]:
+def init_logger_dict(
+    metrics: Dict[str, Any], drug, mlflow_suffix: str = ""
+) -> Dict[str, Any]:
     metrics["point_clouds"] = {"source": [], "target": [], "transport": []}
     metrics["drug"] = drug
     metrics["wasserstein"] = []
@@ -26,7 +28,9 @@ def init_logger_dict(metrics: Dict[str, Any], drug) -> Dict[str, Any]:
     return metrics
 
 
-def log_metrics(metrics, target, transport, mlflow_logging: bool = False):
+def log_metrics(
+    metrics, target, transport, mlflow_logging: bool = False, mlflow_suffix: str = ""
+):
     w_dist = wasserstein_distance(target, transport)
     mmd_dist = compute_scalar_mmd(target, transport)
     sh_div = sinkhorn_div(target, transport)
@@ -37,12 +41,12 @@ def log_metrics(metrics, target, transport, mlflow_logging: bool = False):
     if mlflow_logging:
         mlflow.log_metrics(
             {
-                "wasserstein": w_dist,
-                "mmd": mmd_dist,
-                "sinkhorn_div": sh_div,
-                "monge_gap": monge_gap,
-                "drug_signature": ds,
-                "r2": r2,
+                f"wasserstein{mlflow_suffix}": w_dist,
+                f"mmd{mlflow_suffix}": mmd_dist,
+                f"sinkhorn_div{mlflow_suffix}": sh_div,
+                f"monge_gap{mlflow_suffix}": monge_gap,
+                f"drug_signature{mlflow_suffix}": ds,
+                f"r2{mlflow_suffix}": r2,
             }
         )
 
@@ -60,7 +64,7 @@ def log_point_clouds(metrics, source, target, transport):
     metrics["point_clouds"]["transport"].append(transport)
 
 
-def log_mean_metrics(metrics, mlflow_logging: bool = False):
+def log_mean_metrics(metrics, mlflow_logging: bool = False, mlflow_suffix: str = ""):
     metrics["mean_statistics"]["mean_wasserstein"] = float(
         sum(metrics["wasserstein"]) / len(metrics["wasserstein"])
     )
@@ -82,7 +86,8 @@ def log_mean_metrics(metrics, mlflow_logging: bool = False):
     logger.info(metrics["mean_statistics"])
 
     if mlflow_logging:
-        mlflow.log_metrics(metrics["mean_statistics"])
+        d = {f"{k}{mlflow_suffix}": v for k, v in metrics["mean_statistics"].items()}
+        mlflow.log_metrics(d)
 
 
 def get_single_loaders_for_eval(datamodule, split):

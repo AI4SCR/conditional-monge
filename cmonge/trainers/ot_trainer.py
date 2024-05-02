@@ -75,6 +75,7 @@ class AbstractTrainer:
         valid: bool = False,
         n_samples: int = 9,
         log_transport: bool = False,
+        mlflow_suffix: str = "",
     ) -> None:
         """Evaluate a trained model on a validation set
         and save the metrics to a json file."""
@@ -83,11 +84,11 @@ class AbstractTrainer:
         if valid:
             logger.info("Evaluating on validation set")
             loader_source, loader_target = datamodule.valid_dataloaders()
-            self.metrics["eval"] = "valid"
+            self.metrics["eval"] = f"valid{mlflow_suffix}"
         else:
             logger.info("Evaluating on test set")
             loader_source, loader_target = datamodule.test_dataloaders()
-            self.metrics["eval"] = "test"
+            self.metrics["eval"] = f"test{mlflow_suffix}"
         for enum, (source, target) in enumerate(zip(loader_source, loader_target)):
 
             if not identity:
@@ -105,12 +106,20 @@ class AbstractTrainer:
                 transport = transport[:, datamodule.marker_idx]
 
             log_metrics(
-                self.metrics, target, transport, mlflow_logging=self.mlflow_logging
+                self.metrics,
+                target,
+                transport,
+                mlflow_logging=self.mlflow_logging,
+                mlflow_suffix=f"_{enum}" + mlflow_suffix,
             )
             if enum > n_samples:
                 break
 
-        log_mean_metrics(self.metrics, mlflow_logging=self.mlflow_logging)
+        log_mean_metrics(
+            self.metrics,
+            mlflow_logging=self.mlflow_logging,
+            mlflow_suffix=mlflow_suffix,
+        )
         create_or_update_logfile(self.logger_path, self.metrics)
 
 
@@ -272,6 +281,8 @@ class MongeMapTrainer(AbstractTrainer):
         )
 
         self.state = self.solver.state_neural_net
+
+        logger.info("Loaded checkpoint")
 
 
 class NeuralDualTrainer(AbstractTrainer):
