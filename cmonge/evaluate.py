@@ -50,6 +50,18 @@ def log_metrics(
             }
         )
 
+    if mlflow_logging:
+        mlflow.log_metrics(
+            {
+                "wasserstein": w_dist,
+                "mmd": mmd_dist,
+                "sinkhorn_div": sh_div,
+                "monge_gap": monge_gap,
+                "drug_signature": ds,
+                "r2": r2,
+            }
+        )
+
     metrics["wasserstein"].append(w_dist)
     metrics["mmd"].append(mmd_dist)
     metrics["sinkhorn_div"].append(sh_div)
@@ -64,7 +76,7 @@ def log_point_clouds(metrics, source, target, transport):
     metrics["point_clouds"]["transport"].append(transport)
 
 
-def log_mean_metrics(metrics, mlflow_logging: bool = False, mlflow_suffix: str = ""):
+def log_mean_metrics(metrics, mlflow_logging: bool = False):
     metrics["mean_statistics"]["mean_wasserstein"] = float(
         sum(metrics["wasserstein"]) / len(metrics["wasserstein"])
     )
