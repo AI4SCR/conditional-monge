@@ -126,9 +126,9 @@ class AETrainerModule:
         """Define jitted train and eval step on a batch of input."""
 
         def train_step(state: TrainState, batch: jnp.ndarray):
-            loss_fn = lambda params: mse_reconstruction_loss(
+            loss_fn = lambda params: mse_reconstruction_loss( # noqa: E731
                 self.model, params, batch
-            )  # noqa: E731
+            )  
             loss, grads = jax.value_and_grad(loss_fn)(
                 state.params
             )  # Get loss and gradients for loss

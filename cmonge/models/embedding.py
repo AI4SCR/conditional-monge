@@ -212,7 +212,7 @@ class CAR11DimEmbedding(BaseEmbedding):
         if not checkpoint:
             labels = datamodule.train_conditions
             
-            car_11d=pd.DataFrame([self.encode_CAR_11dim(l) for l in labels]).T
+            car_11d=pd.DataFrame([self.encode_CAR_11dim(label) for label in labels]).T
             car_11d.colums = labels
             self.model_dir.mkdir(parents=True, exist_ok=True)
             model_dir = self.model_dir / name
@@ -279,7 +279,7 @@ class CAR16DimEmbedding(BaseEmbedding):
         if not checkpoint:
             labels = datamodule.train_conditions
             
-            car_16d=pd.DataFrame([self.encode_CAR_16dim(l) for l in labels]).T
+            car_16d=pd.DataFrame([self.encode_CAR_16dim(label) for label in labels]).T
             car_16d.colums = labels
             self.model_dir.mkdir(parents=True, exist_ok=True)
             model_dir = self.model_dir / name
@@ -374,7 +374,6 @@ class MetaDataEmbedding(BaseEmbedding):
         self.model_dir = Path(model_dir)
         dataset = datamodule.data_config.file_path.split("/")[-1][:-5]
         if not checkpoint:
-            labels = datamodule.train_conditions
             adata = datamodule.data_config.parent
             group="CAR_Variant"
             cont_scores = ["Cytotoxicity_1", "Proinflamatory_2", "Memory_3", "CD4_Th1_4", "CD4_Th2_5", 'S.Score', 'G2M.Score']
