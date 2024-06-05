@@ -1,8 +1,9 @@
 import collections
 import functools
+import mlflow
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional, Tuple, Literal
+from typing import Callable, Dict, Iterator, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -16,7 +17,7 @@ from cmonge.trainers.ot_trainer import (
     loss_factory,
     regularizer_factory,
 )
-from cmonge.utils import create_or_update_logfile, optim_factory
+from cmonge.utils import create_or_update_logfile, optim_factory, flatten_metrics
 from dotmap import DotMap
 from flax.core import frozen_dict
 from flax.training import train_state
@@ -44,15 +45,10 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.regularizer_strength = 1
         self.num_train_iters = self.config.num_train_iters
 
-        self.init_model(
-            datamodule=datamodule, 
-            checkpoint_manager=checkpoint_manager
-        )
+        self.init_model(datamodule=datamodule, checkpoint_manager=checkpoint_manager)
 
     def init_model(
-            self,
-            datamodule: ConditionalDataModule, 
-            checkpoint_manager: CheckpointManager
+        self, datamodule: ConditionalDataModule, checkpoint_manager: CheckpointManager
     ) -> None:
         # setup loss function and regularizer
         fitting_loss_fn = loss_factory[self.config.fitting_loss.name]
@@ -79,7 +75,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
         if self.config.checkpointing and checkpoint_manager is None:
             logger.info("Creating checkpoint manager in init")
             options = CheckpointManagerOptions(
-                best_fn=lambda metrics: metrics[self.config.checkpointing_args.checkpoint_crit],
+                best_fn=lambda metrics: metrics[
+                    self.config.checkpointing_args.checkpoint_crit
+                ],
                 best_mode="min",
                 max_to_keep=1,
                 save_interval_steps=1,
@@ -90,11 +88,11 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 options=options,
             )
         else:
-            self.checkpoint_manager=checkpoint_manager
+            self.checkpoint_manager = checkpoint_manager
 
         self.neural_net = ConditionalPerturbationNetwork(
-                **self.config.mlp
-            )  # TODO: create embedding and model factory
+            **self.config.mlp
+        )  # TODO: create embedding and model factory
 
         self.state_neural_net = self.neural_net.create_train_state(rng, optimizer)
 
@@ -147,6 +145,8 @@ class ConditionalMongeTrainer(AbstractTrainer):
             )
 
             self.update_logs(current_logs, logs, tbar)
+            if self.mlflow_logging:
+                mlflow.log_metrics(flatten_metrics(current_logs))
 
             if self.config.checkpointing:
                 ckpt = self.state_neural_net
@@ -230,14 +230,17 @@ class ConditionalMongeTrainer(AbstractTrainer):
         datamodule: ConditionalDataModule,
         identity: bool = False,
         n_samples: int = 9,
+        mlflow_suffix: str = "",
     ) -> None:
-        """Evaluate a trained model on a validation set and save the metrics to a json file."""
+        """Evaluate a trained model on a validation set
+        and save the metrics to a json file."""
 
         def evaluate_condition(
             loader_source: Iterator[jnp.ndarray],
             loader_target: Iterator[jnp.ndarray],
             cond_embeddings: jnp.ndarray,
             metrics: str,
+            mlflow_suffix: str,
         ):
             for enum, (source, target) in enumerate(zip(loader_source, loader_target)):
                 if not identity:
@@ -252,7 +255,13 @@ class ConditionalMongeTrainer(AbstractTrainer):
                     target = target[:, datamodule.marker_idx]
                     transport = transport[:, datamodule.marker_idx]
 
-                log_metrics(metrics, target, transport)
+                log_metrics(
+                    metrics,
+                    target,
+                    transport,
+                    mlflow_logging=self.mlflow_logging,
+                    mlflow_suffix=f"_{enum}" + mlflow_suffix,
+                )
                 if enum > n_samples:
                     break
 
@@ -261,6 +270,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 str, Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]
             ],
             split_type: str,
+            mlflow_suffix: str,
         ):
             self.metrics[split_type] = {}
             for cond, loader in cond_to_loaders.items():
@@ -277,18 +287,48 @@ class ConditionalMongeTrainer(AbstractTrainer):
                     loader_target,
                     cond_embedding,
                     self.metrics[split_type][cond],
+                    mlflow_suffix=f"{mlflow_suffix}_{cond}",
                 )
-                log_mean_metrics(self.metrics[split_type][cond])
+                log_mean_metrics(
+                    self.metrics[split_type][cond],
+                    mlflow_logging=self.mlflow_logging,
+                    mlflow_suffix=f"{mlflow_suffix}_{cond}",
+                )
 
-        # cond_to_loaders = datamodule.train_dataloaders()
-        # evaluate_split(cond_to_loaders, "in-sample")
-
-        cond_to_loaders = datamodule.valid_dataloaders()
-        evaluate_split(cond_to_loaders, "out-sample")
+        # Log in test set if present, otherwise valid otherwise train
+        if self.datamodule.data_config.split[2] > 0:
+            logger.info("Evaluating on test set")
+            suffix = f"_test{mlflow_suffix}"
+            cond_to_loaders = datamodule.test_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="out-sample",
+                mlflow_suffix=suffix,
+            )
+        elif self.datamodule.data_config.split[1] > 0:
+            logger.info("Evaluating on validation set")
+            suffix = f"_valid{mlflow_suffix}"
+            cond_to_loaders = datamodule.valid_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="out-sample",
+                mlflow_suffix=suffix,
+            )
+        else:
+            logger.info("Evaluating on train set")
+            suffix = f"_train{mlflow_suffix}"
+            cond_to_loaders = datamodule.train_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="in-sample",
+                mlflow_suffix=suffix,
+            )
 
         create_or_update_logfile(self.logger_path, self.metrics)
 
-    def save_checkpoint(self, path: Path = None, checkpoint_options: DotMap = None)->None:
+    def save_checkpoint(
+        self, path: Path = None, checkpoint_options: DotMap = None
+    ) -> None:
         logger.warning("Current checkpoint will be saved without metrics")
         if self.checkpoint_manager is None:
             if checkpoint_options is not None and path is not None:
@@ -301,35 +341,44 @@ class ConditionalMongeTrainer(AbstractTrainer):
                     options=options,
                 )
         else:
-            logger.warning("Trying to load checkpoint without checkpoint manager ", 
-                "or checkpointmanager options and checkpoint path")
+            logger.warning(
+                "Trying to load checkpoint without checkpoint manager ",
+                "or checkpointmanager options and checkpoint path",
+            )
 
         self.checkpoint_manager.save(
             int(self.neural_net.step),
             args=StandardSave(self.neural_net),
             force=True,
         )
+
     @classmethod
     def load_checkpoint(
-            cls, 
-            jobid: int,
-            logger_path: Path,
-            config: DotMap,
-            datamodule: ConditionalDataModule,
-            checkpoint_manager: Optional[CheckpointManager] = None,
-            step: int = None) -> None:
+        cls,
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        datamodule: ConditionalDataModule,
+        checkpoint_manager: Optional[CheckpointManager] = None,
+        mlflow_logging: bool = False,
+        step: int = None,
+    ) -> None:
 
-        out_class = cls(jobid=jobid,
+        out_class = cls(
+            jobid=jobid,
             logger_path=logger_path,
             config=config,
             datamodule=datamodule,
-            checkpoint_manager= checkpoint_manager
-            )
+            checkpoint_manager=checkpoint_manager,
+            mlflow_logging=mlflow_logging,
+        )
 
         if step is None:
             # Only checks steps with metrics available
             step = out_class.checkpoint_manager.best_step()
-        out_class.neural_net = out_class.checkpoint_manager.restore(step, args=StandardRestore())
+        out_class.neural_net = out_class.checkpoint_manager.restore(
+            step, args=StandardRestore()
+        )
 
         logger.info("Loaded ConditionalMongeTrainer from checkpoint")
 

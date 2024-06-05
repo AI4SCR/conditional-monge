@@ -13,11 +13,18 @@ class ConditionalDataModule:
     """Class for conditional dataloaders.
 
     Available modes:
-    random - Conditions are randomly split into train and test, train on all data from some conditions and test on all data from others.
-    homogeneous - Train on all conditions but keep out some data from every condition for testing.
+    random - Conditions are randomly split into train and test, train on all data from
+        some conditions and test on all data from others.
+    homogeneous - Train on all conditions but keep out some data from
+        every condition for testing.
     """
 
-    def __init__(self, data_config: DotMap, condition_config: DotMap, ae_config: Optional[DotMap] = None):
+    def __init__(
+        self,
+        data_config: DotMap,
+        condition_config: DotMap,
+        ae_config: Optional[DotMap] = None,
+    ):
         self.data_config = data_config
         self.name = f"cond-{data_config.name}"
         assert condition_config.mode in ["extrapolate", "homogeneous", "custom"]
@@ -149,18 +156,27 @@ class ConditionalDataModule:
 
     def train_dataloaders(
         self,
-    ) -> Dict[str, Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray]]:
+    ) -> Dict[
+        str,
+        Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray],
+    ]:
         logger.info("Setting up train dataloaders.")
         return self.get_loaders_by_type("train")
 
     def valid_dataloaders(
         self,
-    ) -> Dict[str, Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray]]:
-        logger.info("Setting up train dataloaders.")
+    ) -> Dict[
+        str,
+        Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray],
+    ]:
+        logger.info("Setting up validation dataloaders.")
         return self.get_loaders_by_type("valid")
 
     def test_dataloaders(
         self,
-    ) -> Dict[str, Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray]]:
-        logger.info("Setting up train dataloaders.")
+    ) -> Dict[
+        str,
+        Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray],
+    ]:
+        logger.info("Setting up test dataloaders.")
         return self.get_loaders_by_type("test")

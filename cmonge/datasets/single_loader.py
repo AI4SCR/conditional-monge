@@ -467,20 +467,6 @@ class CarModule(AbstractDataModule):
         super().__init__()
         self.setup(**config)
 
-    def loader(self) -> None:
-        self.adata = sc.read_h5ad(self.file_path)
-        with open(self.features_path) as f:
-            features = f.readlines()
-        self.features = [feature.rstrip() for feature in features]
-
-        with open(self.drugs_path) as f:
-            drugs = f.readlines()
-        self.drugs = [drug.rstrip() for drug in drugs]
-
-    def preprocesser(self) -> None:
-        self.adata = self.adata[:, self.features].copy()
-        self.adata.X = jnp.asarray(self.adata.X.todense())
-
     def setup(
         self,
         name: str,
@@ -496,6 +482,8 @@ class CarModule(AbstractDataModule):
         seed: int,
         ae_config_path: Optional[Path] = None,
         reduction: Optional[str] = None,
+        parent: Optional[AnnData] = None,
+        parent_reducer: Optional[str] = None,
     ) -> None:
         self.name = name
         self.file_path = file_path
@@ -508,13 +496,35 @@ class CarModule(AbstractDataModule):
         self.control_condition = control_condition
         self.ae = ae
         self.ae_config = load_config(ae_config_path) if ae_config_path else None
-        self.key = jax.random.PRNGKey(seed)
         self.reduction = reduction
+        self.parent = parent
+        self.parent_reducer = parent_reducer
+        self.seed = seed
+        self.key = jax.random.PRNGKey(self.seed)
 
         self.loader()
         self.preprocesser()
         self.splitter()
         self.reducer()
+
+
+    def loader(self) -> None:
+        if self.parent:
+            self.adata = self.parent
+        else:
+            self.adata = sc.read_h5ad(self.file_path)
+        with open(self.features_path) as f:
+            features = f.readlines()
+        self.features = [feature.rstrip() for feature in features]
+
+        with open(self.drugs_path) as f:
+            drugs = f.readlines()
+        self.drugs = [drug.rstrip() for drug in drugs]
+
+    def preprocesser(self) -> None:
+        self.adata = self.adata[:, self.features].copy()
+        self.adata.X = jnp.asarray(self.adata.X.todense())
+
 
     def reducer(self):
         """Sets up dimensionality reduction, either with PCA, AE or identity."""
@@ -523,8 +533,11 @@ class CarModule(AbstractDataModule):
             self.encoder = lambda x: (x - self.pca_means) @ self.adata.varm["PCs"]
             self.decoder = lambda x: x @ self.adata.varm["PCs"].T + self.pca_means
         elif self.reduction == "ae":
-            trainer = AETrainerModule(self.ae_config)
-            trainer.load_model(self.name, self.drug_condition)
+            if self.parent_reducer:
+                trainer = self.parent_reducer
+            else:
+                trainer = AETrainerModule(self.ae_config)
+                trainer.load_model(self.name, self.drug_condition)
             model = trainer.model.bind({"params": trainer.state.params})
             self.encoder = lambda x: model.encoder(x)
             self.decoder = lambda x: model.decoder(x)
