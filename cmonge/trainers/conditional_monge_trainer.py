@@ -34,14 +34,6 @@ class ConditionalMongeTrainer(AbstractTrainer):
         logger_path: Path,
         config: DotMap,
         datamodule: ConditionalDataModule,
-    ) -> None:
-        super().__init__(jobid, logger_path)
-    def __init__(
-        self,
-        jobid: int,
-        logger_path: Path,
-        config: DotMap,
-        datamodule: ConditionalDataModule,
         mlflow_logging: bool = False,
         checkpoint_manager: Optional[CheckpointManager] = None,
     ) -> None:
@@ -70,20 +62,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
             init_value=self.config.optim.lr,
             decay_steps=self.num_train_iters,
             alpha=1e-2,
-            init_value=self.config.optim.lr,
-            decay_steps=self.num_train_iters,
-            alpha=1e-2,
         )
         optimizer = opt_fn(learning_rate=lr_scheduler, **self.config.optim.kwargs)
-
-        self.neural_net = ConditionalPerturbationNetwork(
-            **self.config.mlp
-        )  # TODO: create embedding and model factory
-
         embed_module = embed_factory[self.config.embedding.name]
-        self.embedding_module = embed_module(
-            datamodule=datamodule, **self.config.embedding
-        )
         self.embedding_module = embed_module(
             datamodule=datamodule, **self.config.embedding
         )
@@ -118,19 +99,11 @@ class ConditionalMongeTrainer(AbstractTrainer):
     def generate_batch(
         self, datamodule: ConditionalDataModule, split_type: str
     ) -> Dict[str, jnp.ndarray]:
-    def generate_batch(
-        self, datamodule: ConditionalDataModule, split_type: str
-    ) -> Dict[str, jnp.ndarray]:
         """Generate a batch of condition and samples."""
         condition_to_loaders = datamodule.get_loaders_by_type(split_type)
         condition = datamodule.sample_condition(split_type)
         loader_source, loader_target = condition_to_loaders[condition]
         embeddings = self.embedding_module(condition)
-        return {
-            "source": next(loader_source),
-            "target": next(loader_target),
-            "condition": embeddings,
-        }
         return {
             "source": next(loader_source),
             "target": next(loader_target),
@@ -205,9 +178,6 @@ class ConditionalMongeTrainer(AbstractTrainer):
             mapped_samples = apply_fn(
                 {"params": params}, batch["source"], batch["condition"]
             )
-            mapped_samples = apply_fn(
-                {"params": params}, batch["source"], batch["condition"]
-            )
 
             # compute the loss
             val_fitting_loss = self.fitting_loss(batch["target"], mapped_samples)
@@ -235,9 +205,6 @@ class ConditionalMongeTrainer(AbstractTrainer):
             (_, current_train_logs), grads = grad_fn(
                 state_neural_net.params, state_neural_net.apply_fn, train_batch
             )
-            (_, current_train_logs), grads = grad_fn(
-                state_neural_net.params, state_neural_net.apply_fn, train_batch
-            )
 
             # Logging current step
             current_logs = {"train": current_train_logs, "eval": {}}
@@ -254,9 +221,6 @@ class ConditionalMongeTrainer(AbstractTrainer):
         return step_fn
 
     def transport(self, x, c):
-        return self.state_neural_net.apply_fn(
-            {"params": self.state_neural_net.params}, x, c
-        )
         return self.state_neural_net.apply_fn(
             {"params": self.state_neural_net.params}, x, c
         )
