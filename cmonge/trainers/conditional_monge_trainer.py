@@ -72,7 +72,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.step_fn = self._get_step_fn()
         self.key, rng = jax.random.split(self.key, 2)
 
-        if self.config.checkpointing and checkpoint_manager is None:
+        if checkpoint_manager is None:
             logger.info("Creating checkpoint manager in init")
             options = CheckpointManagerOptions(
                 best_fn=lambda metrics: metrics[
@@ -342,7 +342,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 )
         else:
             logger.warning(
-                "Trying to load checkpoint without checkpoint manager ",
+                "Trying to save checkpoint without checkpoint manager ",
                 "or checkpointmanager options and checkpoint path",
             )
 
