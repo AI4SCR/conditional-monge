@@ -523,6 +523,7 @@ class CarModule(AbstractDataModule):
 
     def preprocesser(self) -> None:
         self.adata = self.adata[:, self.features].copy()
+        self.adata.X = self.adata.layers['logcounts']
         self.adata.X = jnp.asarray(self.adata.X.todense())
 
 

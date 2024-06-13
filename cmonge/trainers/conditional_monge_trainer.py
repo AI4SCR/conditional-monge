@@ -327,7 +327,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         create_or_update_logfile(self.logger_path, self.metrics)
 
     def save_checkpoint(
-        self, path: Path = None, checkpoint_options: DotMap = None
+        self, step_or_name, path: Path = None, checkpoint_options: DotMap = None
     ) -> None:
         logger.warning("Current checkpoint will be saved without metrics")
         if self.checkpoint_manager is None:
@@ -345,12 +345,12 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 "Trying to save checkpoint without checkpoint manager ",
                 "or checkpointmanager options and checkpoint path",
             )
-
+        ckpt = self.state_neural_net
         self.checkpoint_manager.save(
-            int(self.neural_net.step),
-            args=StandardSave(self.neural_net),
-            force=True,
-        )
+                step_or_name,
+                args=StandardSave(ckpt),
+            )
+
 
     @classmethod
     def load_checkpoint(
