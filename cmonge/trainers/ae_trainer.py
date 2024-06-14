@@ -79,20 +79,15 @@ def mse_reconstruction_loss(model: AutoEncoder, params: FrozenDict, batch: jnp.n
 class AETrainerModule:
     """Class for training, evaluating and saving an AutoEncoder model."""
 
-    def __init__(self, config: DotMap, datamodule: AbstractDataModule = None):
+    def __init__(self, config: DotMap,):
         self.config = config
         self.model_dir = Path(self.config.training.model_dir)
         self.create_functions()
-        self.init_model(datamodule)
+        self.init_model()
 
-    def init_model(self, datamodule: AbstractDataModule = None):
+    def init_model(self):
         """Initialize optimizer and model parameters."""
-        if isinstance(self.config.model.act_fn, str):
-            self.config.model.act_fn = activation_factory[self.config.model.act_fn]
-        elif callable(self.config.model.act_fn):
-            pass
-        else:
-            logger.error("Incorrect activation function passes to AETrainerModule")
+        self.config.model.act_fn = activation_factory[self.config.model.act_fn]
         self.model = AutoEncoder(**self.config.model)
 
         rng = jax.random.PRNGKey(self.config.model.seed)
@@ -114,13 +109,6 @@ class AETrainerModule:
         self.state = TrainState.create(
             apply_fn=self.model.apply, params=params, tx=optimizer
         )
-        if self.config.training.ckpt:
-            self.load_model(
-                dataset_name=datamodule.name, drug_condition=datamodule.drug_condition
-            )
-            self.is_trained = True
-        else:
-            self.is_trained = False
 
     def create_functions(self):
         """Define jitted train and eval step on a batch of input."""
@@ -185,7 +173,6 @@ class AETrainerModule:
                 drug_condition=datamodule.drug_condition,
                 step=epoch,
             )
-        self.is_trained = True
         logger.info("Training finished.")
 
     def save_model(self, dataset_name: str, drug_condition: str, step: int = 0):
@@ -226,7 +213,6 @@ class AETrainerModule:
             apply_fn=self.model.apply, params=cpkt["params"], tx=self.state.tx
         )
         self.latent_shift = cpkt["latent_shift"]
-        self.is_trained = True
 
     def compute_latent_shift(self, datamodule: AbstractDataModule):
         logger.info(f"Computing latent shift for drug {datamodule.drug_condition}.")
