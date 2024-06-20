@@ -132,6 +132,7 @@ class AETrainerModule:
     def train(self, datamodule: AbstractDataModule):
         """Train model for n_epochs, save best model after each epoch."""
         logger.info("Training started.")
+        logger.info(f"Autoencoder model directory is {self.model_dir}")
         best_eval = 1e6
         for epoch in range(self.config.training.n_epochs):
             # Training step
@@ -181,7 +182,7 @@ class AETrainerModule:
         model_dir.mkdir(parents=True, exist_ok=True)
         cpkt = {"params": self.state.params, "latent_shift": self.latent_shift}
         prefix = f"autoencoder_{self.model.latent_dim}_{dataset_name}_{drug_condition}_"
-        logger.info(f"Saving model checkpoint to {prefix}")
+        logger.info(f"Saving model checkpoint to {prefix} in dir {model_dir}")
 
         checkpoints.save_checkpoint(
             ckpt_dir=model_dir,

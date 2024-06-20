@@ -23,6 +23,7 @@ from flax.core import frozen_dict
 from flax.training import train_state
 from orbax.checkpoint import CheckpointManagerOptions, CheckpointManager
 from orbax.checkpoint.args import StandardSave, StandardRestore
+from ott.solvers.nn.models import NeuralTrainState
 
 from loguru import logger
 
@@ -349,6 +350,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.checkpoint_manager.save(
                 step_or_name,
                 args=StandardSave(ckpt),
+                force=True
             )
 
 
@@ -376,10 +378,20 @@ class ConditionalMongeTrainer(AbstractTrainer):
         if step is None:
             # Only checks steps with metrics available
             step = out_class.checkpoint_manager.best_step()
-        out_class.neural_net = out_class.checkpoint_manager.restore(
+        ckpt = out_class.checkpoint_manager.restore(
             step, args=StandardRestore()
         )
 
+        out_class.state_neural_net = NeuralTrainState.create(
+            apply_fn=out_class.neural_net.apply,
+            params=ckpt["params"],
+            tx=out_class.state_neural_net.tx,
+            potential_value_fn=out_class.neural_net.potential_value_fn,
+            potential_gradient_fn=out_class.neural_net.potential_gradient_fn,
+            step=ckpt["step"],
+                    )
+            
         logger.info("Loaded ConditionalMongeTrainer from checkpoint")
+
 
         return out_class
