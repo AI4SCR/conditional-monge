@@ -332,7 +332,7 @@ class ConditionalPerturbationNetwork(ModelBase):
         **kwargs: Any,
     ) -> NeuralTrainState:
         """Create initial `TrainState`."""
-        c = jnp.ones((1, 11))
+        c = jnp.ones((1, self.dim_cond))
         x = jnp.ones((1, self.dim_data))
         params = self.init(rng, x=x, c=c)["params"]
         return NeuralTrainState.create(

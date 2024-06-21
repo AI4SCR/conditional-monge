@@ -40,6 +40,7 @@ class RDKitEmbedding(BaseEmbedding):
         drug_to_smile_path: str,
         name: str,
         model_dir: str,
+        datamodule=None,# For compatability
     ) -> None:
         super().__init__(batch_size)
         self.smile_path = Path(smile_path)
@@ -125,7 +126,14 @@ class RDKitEmbedding(BaseEmbedding):
 
 
 class ModeOfActionEmbedding(BaseEmbedding):
-    def __init__(self, datamodule: ConditionalDataModule, checkpoint: bool, name: str, model_dir: str) -> None:
+    def __init__(
+        self, 
+        datamodule: ConditionalDataModule, 
+        checkpoint: bool, 
+        name: str, 
+        model_dir: str, 
+        batch_size=None, # For compatability
+    ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
         if not checkpoint:
