@@ -22,6 +22,9 @@ from flax.core import frozen_dict
 from flax.training import train_state
 from loguru import logger
 
+from orbax.checkpoint import PyTreeCheckpointer
+from flax.training.orbax_utils import save_args_from_target
+
 
 class ConditionalMongeTrainer(AbstractTrainer):
     def __init__(self, jobid: int, logger_path: Path, config: DotMap, datamodule: ConditionalDataModule) -> None:
@@ -206,10 +209,63 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 evaluate_condition(loader_source, loader_target, cond_embedding, self.metrics[split_type][cond])
                 log_mean_metrics(self.metrics[split_type][cond])
 
-        # cond_to_loaders = datamodule.train_dataloaders()
-        # evaluate_split(cond_to_loaders, "in-sample")
-
-        cond_to_loaders = datamodule.valid_dataloaders()
-        evaluate_split(cond_to_loaders, "out-sample")
+        # Log in test set if present, otherwise valid otherwise train
+        if self.datamodule.data_config.split[2] > 0:
+            logger.info("Evaluating on test set")
+            cond_to_loaders = datamodule.test_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="test-set",
+            )
+        elif self.datamodule.data_config.split[1] > 0:
+            logger.info("Evaluating on validation set")
+            cond_to_loaders = datamodule.valid_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="valid-set",
+            )
+        else:
+            logger.info("Evaluating on train set")
+            cond_to_loaders = datamodule.train_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="train-set",
+            )
 
         create_or_update_logfile(self.logger_path, self.metrics)
+
+    def save_checkpoint(
+        self,path: Path
+    ) -> None:
+        ckpt = self.state_neural_net
+        checkpointer=PyTreeCheckpointer()
+        save_args = save_args_from_target(ckpt)
+        checkpointer.save(
+                path,
+                ckpt, 
+                save_args=save_args,
+                force=True
+            )
+
+
+    @classmethod
+    def load_checkpoint(
+        cls,
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        datamodule: ConditionalDataModule,
+        ckpt_path: Path,
+    ) -> None:
+        out_class = cls(
+            jobid=jobid,
+            logger_path=logger_path,
+            config=config,
+            datamodule=datamodule,
+        )
+        checkpointer=PyTreeCheckpointer()
+        out_class.state_neural_net = checkpointer.restore(
+            ckpt_path, item=out_class.state_neural_net
+        )
+        logger.info("Loaded ConditionalMongeTrainer from checkpoint")
+        return out_class
