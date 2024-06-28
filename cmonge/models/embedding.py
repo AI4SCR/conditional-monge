@@ -34,15 +34,14 @@ class DoseEmbedding(BaseEmbedding):
 class RDKitEmbedding(BaseEmbedding):
     def __init__(
         self,
-        batch_size: int,
         checkpoint: bool,
         smile_path: str,
         drug_to_smile_path: str,
         name: str,
         model_dir: str,
-        datamodule=None,# For compatability
+        datamodule: ConditionalDataModule,# For compatability
     ) -> None:
-        super().__init__(batch_size)
+        super().__init__(datamodule.batch_size)
         self.smile_path = Path(smile_path)
         self.drug_to_smile_path = Path(drug_to_smile_path)
         self.model_dir = Path(model_dir)
@@ -132,7 +131,6 @@ class ModeOfActionEmbedding(BaseEmbedding):
         checkpoint: bool, 
         name: str, 
         model_dir: str, 
-        batch_size=None, # For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
@@ -186,7 +184,6 @@ class CAR11DimEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
-        batch_size=None #For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
@@ -254,7 +251,6 @@ class CAR16DimEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
-        batch_size=None #For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
@@ -325,7 +321,6 @@ class CarEsmSmall(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
-        batch_size=None #For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
@@ -352,7 +347,6 @@ class MetaDataEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
-        batch_size=None #For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)

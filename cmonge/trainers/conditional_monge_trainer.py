@@ -55,7 +55,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.neural_net = ConditionalPerturbationNetwork(**self.config.mlp)  # TODO: create embedding and model factory
 
         embed_module = embed_factory[self.config.embedding.name]
-        self.embedding_module = embed_module(datamodule=datamodule, batch_size=self.datamodule.batch_size ,**self.config.embedding)
+        self.embedding_module = embed_module(datamodule=datamodule ,**self.config.embedding)
 
         self.step_fn = self._get_step_fn()
         self.key, rng = jax.random.split(self.key, 2)
