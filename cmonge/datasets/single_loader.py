@@ -457,7 +457,7 @@ class FourIModule(AbstractDataModule):
         self, batch_size: Optional[int] = None
     ) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
         test_loaders = self.get_loaders_by_type("test", batch_size)
-        return test_loadersx
+        return test_loaders
 
 
 DataModuleFactory = {
