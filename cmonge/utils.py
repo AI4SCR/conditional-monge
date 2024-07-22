@@ -1,13 +1,14 @@
 import json
 import os
-from pathlib import Path
-from typing import Any, Dict
-
-import jax.numpy as jnp
 import optax
 import yaml
+
+import jax.numpy as jnp
+
 from dotmap import DotMap
 from flax import linen as nn
+from pathlib import Path
+from typing import Any, Dict
 
 
 def jax_serializer(obj):

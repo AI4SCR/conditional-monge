@@ -44,7 +44,9 @@ class AbstractDataModule:
         """Abstract method for creating and returning an iterator from the test data."""
 
     @staticmethod
-    def sampler_iter(array: jnp.ndarray, batch_size: int, key: PRNGKeyArray) -> Iterator[jnp.ndarray]:
+    def sampler_iter(
+        array: jnp.ndarray, batch_size: int, key: PRNGKeyArray
+    ) -> Iterator[jnp.ndarray]:
         """Creates an inifinite dataloader with random sampling out of a jax array."""
         while True:
             k1, key = jax.random.split(key, 2)
@@ -59,7 +61,9 @@ class AbstractDataModule:
         batched = trimmed.reshape((num_batches, batch_size) + array.shape[1:])
         return batched
 
-    def batcher_iter(self, array: jnp.ndarray, batch_size: int) -> Iterator[jnp.ndarray]:
+    def batcher_iter(
+        self, array: jnp.ndarray, batch_size: int
+    ) -> Iterator[jnp.ndarray]:
         """Groups the data into batches and returns an iterator obejct."""
         batched = self.batcher(array, batch_size)
         for batch in batched:
@@ -73,9 +77,13 @@ class AbstractDataModule:
     def splitter(self):
         """Splits the dataset into source-target and train/valid/test buckets."""
         logger.info("Splitting dataset started.")
-        source_idx = self.adata.obs[self.adata.obs[self.drug_col] == self.control_condition].index
+        source_idx = self.adata.obs[
+            self.adata.obs[self.drug_col] == self.control_condition
+        ].index
         self.control_adata = self.adata[source_idx, :]
-        target_idx = self.adata.obs[self.adata.obs[self.drug_col] == self.drug_condition].index
+        target_idx = self.adata.obs[
+            self.adata.obs[self.drug_col] == self.drug_condition
+        ].index
         self.target_adata = self.adata[target_idx, :]
         assert sum(self.split) == 1
         key, self.key = jax.random.split(self.key, 2)
@@ -83,11 +91,17 @@ class AbstractDataModule:
         if len(self.split) == 2:
             self.split = self.split + [0]
         if len(self.split) == 3:
-            self.control_train_cells, self.control_valid_cells, self.control_test_cells = get_train_valid_test_split(
+            (
+                self.control_train_cells,
+                self.control_valid_cells,
+                self.control_test_cells,
+            ) = get_train_valid_test_split(
                 self.control_adata.obs.index, self.split, random_states[:2]
             )
-            self.target_train_cells, self.target_valid_cells, self.target_test_cells = get_train_valid_test_split(
-                self.target_adata.obs.index, self.split, random_states[2:]
+            self.target_train_cells, self.target_valid_cells, self.target_test_cells = (
+                get_train_valid_test_split(
+                    self.target_adata.obs.index, self.split, random_states[2:]
+                )
             )
         else:
             raise ValueError("Invalid split.")
@@ -103,8 +117,12 @@ class AbstractDataModule:
             self.target_test_cells.shape,
         )
 
-        logger.info(f"Target dataset number of cells - train: {ts1}, valid: {ts2}, test: {ts3}.")
-        logger.info(f"Control dataset number of cells - train: {cs1}, valid: {cs2}, test: {cs3}.")
+        logger.info(
+            f"Target dataset number of cells - train: {ts1}, valid: {ts2}, test: {ts3}."
+        )
+        logger.info(
+            f"Control dataset number of cells - train: {cs1}, valid: {cs2}, test: {cs3}."
+        )
         logger.info("Splitting finished.")
 
     def get_loaders_by_type(
@@ -141,10 +159,14 @@ class AbstractDataModule:
 
             if batch_size is None:
                 batch_size = self.batch_size
-            loaders = self.sampler_iter(control, batch_size, k1), self.sampler_iter(target, batch_size, k2)
+            loaders = self.sampler_iter(control, batch_size, k1), self.sampler_iter(
+                target, batch_size, k2
+            )
         return loaders
 
-    def get_ae_iter(self, control: jnp.ndarray, target: jnp.ndarray) -> Iterator[jnp.ndarray]:
+    def get_ae_iter(
+        self, control: jnp.ndarray, target: jnp.ndarray
+    ) -> Iterator[jnp.ndarray]:
         X = np.vstack((control, target))
         k1, self.key = jax.random.split(self.key, 2)
         X = jax.random.permutation(k1, X)
@@ -247,7 +269,9 @@ def get_train_valid_test_split(x: jnp.ndarray, split: list[int], seeds=[0, 1]):
         x_train = x
         x_valid_test = empty
     else:
-        x_train, x_valid_test = train_test_split(x, random_state=seeds[0], test_size=(1 - train), shuffle=True)
+        x_train, x_valid_test = train_test_split(
+            x, random_state=seeds[0], test_size=(1 - train), shuffle=True
+        )
 
     if valid == 0:
         x_valid = empty
@@ -257,7 +281,10 @@ def get_train_valid_test_split(x: jnp.ndarray, split: list[int], seeds=[0, 1]):
         x_test = empty
     else:
         x_valid, x_test = train_test_split(
-            x_valid_test, random_state=seeds[1], test_size=(test / (1 - train)), shuffle=True
+            x_valid_test,
+            random_state=seeds[1],
+            test_size=(test / (1 - train)),
+            shuffle=True,
         )
     return x_train, x_valid, x_test
 
@@ -312,10 +339,18 @@ class SciPlexModule(AbstractDataModule):
         # save marker genes for evaluation
         try:
             genes = self.adata.uns["rank_genes_groups"]["names"][self.drug]
-            self.marker_genes = [gene for gene in genes if gene in self.adata.var.index][:50]
-            self.gene_idx_to_enum = {idx: enum for (enum, idx) in enumerate(self.adata.var.index)}
-            self.marker_idx = [self.gene_idx_to_enum[gene] for gene in self.marker_genes]
-            logger.info(f"{len(self.marker_idx)} marker genes are saved for evaluation.")
+            self.marker_genes = [
+                gene for gene in genes if gene in self.adata.var.index
+            ][:50]
+            self.gene_idx_to_enum = {
+                idx: enum for (enum, idx) in enumerate(self.adata.var.index)
+            }
+            self.marker_idx = [
+                self.gene_idx_to_enum[gene] for gene in self.marker_genes
+            ]
+            logger.info(
+                f"{len(self.marker_idx)} marker genes are saved for evaluation."
+            )
         except ValueError:
             print("Make sure the h5ad file_path points to the sciplex dataset.")
 
@@ -418,9 +453,14 @@ class FourIModule(AbstractDataModule):
         valid_loaders = self.get_loaders_by_type("valid")
         return valid_loaders
 
-    def test_dataloaders(self, batch_size: Optional[int] = None) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
+    def test_dataloaders(
+        self, batch_size: Optional[int] = None
+    ) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
         test_loaders = self.get_loaders_by_type("test", batch_size)
         return test_loaders
 
 
-DataModuleFactory = {"4i": FourIModule, "sciplex": SciPlexModule}  # , "synthetic": SyntheticDosageModule}
+DataModuleFactory = {
+    "4i": FourIModule,
+    "sciplex": SciPlexModule,
+}  # , "synthetic": SyntheticDosageModule}
