@@ -20,7 +20,6 @@ from flax import linen as nn
 from jax.lib import xla_bridge
 from loguru import logger
 from ott.solvers.nn import models, neuraldual
-from ott.tools import map_estimator
 from orbax.checkpoint import CheckpointManagerOptions, CheckpointManager
 from orbax.checkpoint.args import StandardSave
 
@@ -173,47 +172,33 @@ class MongeMapTrainer(AbstractTrainer):
             init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2
         )
         optimizer = opt_fn(learning_rate=lr_scheduler, **optim.kwargs)
-
-        # setup ott-jax solver
-        if not checkpointing:
-            self.solver = map_estimator.MapEstimator(
-                num_genes,
-                fitting_loss=fitting_loss,
-                regularizer=regularizer,
-                model=model,
-                optimizer=optimizer,
-                regularizer_strength=1,
-                num_train_iters=num_train_iters,
-                logging=True,
-                valid_freq=100,
+        if checkpoint_manager is None:
+            logger.info("Creating checkpoint manager in init")
+            options = CheckpointManagerOptions(
+                best_fn=lambda metrics: metrics[checkpoint_crit],
+                best_mode="min",
+                max_to_keep=1,
+                save_interval_steps=1,
             )
-        else:
-            if checkpoint_manager is None:
-                logger.info("Creating checkpoint manager in init")
-                options = CheckpointManagerOptions(
-                    best_fn=lambda metrics: metrics[checkpoint_crit],
-                    best_mode="min",
-                    max_to_keep=1,
-                    save_interval_steps=1,
-                )
 
-                checkpoint_manager = CheckpointManager(
-                    directory=checkpointing_args.checkpoint_dir,
-                    options=options,
-                )
-
-            self.solver = EarlyStopMapEstimator(
-                num_genes,
-                fitting_loss=fitting_loss,
-                regularizer=regularizer,
-                model=model,
-                optimizer=optimizer,
-                regularizer_strength=1,
-                num_train_iters=num_train_iters,
-                logging=True,
-                valid_freq=100,
-                checkpoint_manager=checkpoint_manager,
+            checkpoint_manager = CheckpointManager(
+                directory=checkpointing_args.checkpoint_dir,
+                options=options,
             )
+
+        self.solver = EarlyStopMapEstimator(
+            num_genes,
+            fitting_loss=fitting_loss,
+            regularizer=regularizer,
+            model=model,
+            optimizer=optimizer,
+            regularizer_strength=1,
+            num_train_iters=num_train_iters,
+            logging=True,
+            valid_freq=100,
+            checkpoint_manager=checkpoint_manager,
+            checkpointing=checkpointing,
+        )
 
     def train(self, datamodule: AbstractDataModule) -> None:
         """Trains a Monge Map estimator."""

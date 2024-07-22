@@ -236,7 +236,8 @@ class CAR11DimEmbedding(BaseEmbedding):
             - 1st position
             - 2nd position
         So the three bits of CAR with domain A in the first position would be [1,1,0].
-        A in second position would be [1,0,1] and for the CAR with both domains A [1,1,1].
+        A in second position would be [1,0,1]
+        and for the CAR with both domains A [1,1,1].
         The 3 bits for the cars are concatenated into 15 bit. Then the l6th bit is to
         indicate wether CD3z (`z`) is present.
         0 everywhere is TCR-
@@ -304,7 +305,8 @@ class CAR16DimEmbedding(BaseEmbedding):
             - 1st position
             - 2nd position
         So the three bits of CAR with domain A in the first position would be [1,1,0].
-        A in second position would be [1,0,1] and for the CAR with both domains A [1,1,1].
+        A in second position would be [1,0,1]
+        and for the CAR with both domains A [1,1,1].
         The 3 bits for the cars are concatenated into 15 bit. Then the 16th bit is to
         indicate wether CD3z (`z`) is present.
         0 everywhere is TCR-
@@ -350,7 +352,8 @@ class CarEsmSmall(BaseEmbedding):
         self.model_dir = Path(model_dir)
         if not checkpoint:
             logger.error(
-                "ESM embedding only works with checkpoint, please save a pre-computed embedding"
+                """ESM embedding only works with checkpoint,
+                please save a pre-computed embedding"""
             )
         else:
             model_dir = self.model_dir / name

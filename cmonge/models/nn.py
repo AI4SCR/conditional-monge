@@ -7,7 +7,13 @@ import optax
 from flax.core import frozen_dict
 from jax.nn import initializers
 from ott.solvers.nn.layers import PosDefPotentials
-from ott.solvers.nn.models import ICNN, ModelBase, NeuralTrainState, PotentialGradientFn_t, PotentialValueFn_t
+from ott.solvers.nn.models import (
+    ICNN,
+    ModelBase,
+    NeuralTrainState,
+    PotentialGradientFn_t,
+    PotentialValueFn_t,
+)
 
 
 class PICNN(ICNN):
@@ -35,7 +41,10 @@ class PICNN(ICNN):
         w = []
         for odim in [units[0]] + units[:-1]:
             _w = nn.Dense(
-                odim, use_bias=True, kernel_init=self.init_fn(self.init_std), bias_init=self.init_fn(self.init_std)
+                odim,
+                use_bias=True,
+                kernel_init=self.init_fn(self.init_std),
+                bias_init=self.init_fn(self.init_std),
             )
             w.append(_w)
         self.w = w
@@ -120,7 +129,9 @@ class PICNN(ICNN):
         # self layers for hidden state u, to update z, all ~0
         wu = []
         for odim in units + [1]:
-            _wu = nn.Dense(odim, use_bias=False, kernel_init=self.init_fn(self.init_std))
+            _wu = nn.Dense(
+                odim, use_bias=False, kernel_init=self.init_fn(self.init_std)
+            )
             wu.append(_wu)
         self.wu = wu
 
@@ -134,7 +145,9 @@ class PICNN(ICNN):
             u = self.act_fn(self.w[i](u))
             t_u = jax.nn.softplus(self.wzu[i - 1](u))
             z = self.act_fn(
-                self.wz[i - 1](jnp.multiply(z, t_u)) + self.wx[i](jnp.multiply(x, self.wxu[i](u))) + self.wu[i](u)
+                self.wz[i - 1](jnp.multiply(z, t_u))
+                + self.wx[i](jnp.multiply(x, self.wxu[i](u)))
+                + self.wu[i](u)
             )
 
         z = (
@@ -170,7 +183,9 @@ class PICNN(ICNN):
         """A function that can be evaluated to obtain a potential value, or a linear
         interpolation of a potential.
         """
-        return lambda x, c: self.apply({"params": params}, x=x, c=c)  # type: ignore[misc]
+        return lambda x, c: self.apply(
+            {"params": params}, x=x, c=c
+        )  # type: ignore[misc]
 
     def potential_gradient_fn(
         self,

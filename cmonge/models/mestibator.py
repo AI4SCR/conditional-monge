@@ -29,6 +29,7 @@ class EarlyStopMapEstimator(MapEstimator):
         valid_freq: int = 500,
         rng: Optional[jax.random.PRNGKey] = None,
         checkpoint_manager: CheckpointManager = None,
+        checkpointing: bool = False,
         extra_cm_save_args: Optional[DotMap] = None,
     ):
         super().__init__(
@@ -45,6 +46,7 @@ class EarlyStopMapEstimator(MapEstimator):
         )
 
         self.checkpoint_manager = checkpoint_manager
+        self.checkpointing = checkpointing
 
     def train_map_estimator(
         self,
@@ -102,17 +104,18 @@ class EarlyStopMapEstimator(MapEstimator):
                 )
                 tbar.set_postfix_str(postfix_str)
 
-            ckpt = self.state_neural_net
-            self.checkpoint_manager.save(
-                step,
-                args=StandardSave(ckpt),
-                metrics={
-                    "sinkhorn_div": float(current_logs["eval"]["fitting_loss"]),
-                    "monge_gap": float(current_logs["eval"]["regularizer"]),
-                    "total_loss": float(current_logs["eval"]["regularizer"]),
-                },
-            )
-        self.checkpoint_manager.wait_until_finished()
+            if self.checkpointing:
+                ckpt = self.state_neural_net
+                self.checkpoint_manager.save(
+                    step,
+                    args=StandardSave(ckpt),
+                    metrics={
+                        "sinkhorn_div": float(current_logs["eval"]["fitting_loss"]),
+                        "monge_gap": float(current_logs["eval"]["regularizer"]),
+                        "total_loss": float(current_logs["eval"]["regularizer"]),
+                    },
+                )
+                self.checkpoint_manager.wait_until_finished()
         return self.state_neural_net, logs
 
     @classmethod

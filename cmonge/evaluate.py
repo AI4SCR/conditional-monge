@@ -48,14 +48,24 @@ def log_point_clouds(metrics, source, target, transport):
 
 
 def log_mean_metrics(metrics):
-    metrics["mean_statistics"]["mean_wasserstein"] = float(sum(metrics["wasserstein"]) / len(metrics["wasserstein"]))
-    metrics["mean_statistics"]["mean_mmd"] = float(sum(metrics["mmd"]) / len(metrics["mmd"]))
-    metrics["mean_statistics"]["mean_sinkhorn div"] = float(sum(metrics["sinkhorn_div"]) / len(metrics["sinkhorn_div"]))
-    metrics["mean_statistics"]["mean_monge_gap"] = float(sum(metrics["monge_gap"]) / len(metrics["monge_gap"]))
+    metrics["mean_statistics"]["mean_wasserstein"] = float(
+        sum(metrics["wasserstein"]) / len(metrics["wasserstein"])
+    )
+    metrics["mean_statistics"]["mean_mmd"] = float(
+        sum(metrics["mmd"]) / len(metrics["mmd"])
+    )
+    metrics["mean_statistics"]["mean_sinkhorn div"] = float(
+        sum(metrics["sinkhorn_div"]) / len(metrics["sinkhorn_div"])
+    )
+    metrics["mean_statistics"]["mean_monge_gap"] = float(
+        sum(metrics["monge_gap"]) / len(metrics["monge_gap"])
+    )
     metrics["mean_statistics"]["mean_drug_signature"] = float(
         sum(metrics["drug_signature"]) / len(metrics["drug_signature"])
     )
-    metrics["mean_statistics"]["mean_r2"] = float(sum(metrics["r2"]) / len(metrics["r2"]))
+    metrics["mean_statistics"]["mean_r2"] = float(
+        sum(metrics["r2"]) / len(metrics["r2"])
+    )
     logger.info(metrics["mean_statistics"])
 
 
