@@ -326,17 +326,6 @@ class ConditionalPerturbationNetwork(ModelBase):
         wx = nn.Dense(n_input, use_bias=True)
 
         return x + wx(z)
-        # for n_hidden in self.dim_hidden:
-        #     wx = nn.Dense(n_hidden, use_bias=True)
-        #     drug_embedding = self.act_fn(wx(c))
-
-        # sc = nn.Dense(1, use_bias=True)
-        # dose_embedding = sc(c)
-
-        # m = nn.Dense(n_input, use_bias=True)
-        # drug_embedding = m(drug_embedding)
-
-        # return x + drug_embedding * dose_embedding
 
     def create_train_state(
         self,
