@@ -1,7 +1,7 @@
 import abc
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Literal
 
 import jax.numpy as jnp
 import optax
@@ -13,6 +13,7 @@ from cmonge.evaluate import (
     log_point_clouds,
 )
 from cmonge.metrics import fitting_loss, regularizer
+from cmonge.models.mestibator import EarlyStopMapEstimator
 from cmonge.utils import create_or_update_logfile, optim_factory
 from dotmap import DotMap
 from flax import linen as nn
@@ -20,6 +21,8 @@ from jax.lib import xla_bridge
 from loguru import logger
 from ott.solvers.nn import models, neuraldual
 from ott.tools import map_estimator
+from orbax.checkpoint import CheckpointManagerOptions, CheckpointManager
+from orbax.checkpoint.args import StandardSave
 
 
 class AbstractTrainer:
@@ -70,16 +73,20 @@ class AbstractTrainer:
         n_samples: int = 9,
         log_transport: bool = False,
     ) -> None:
-        """Evaluate a trained model on a validation set and save the metrics to a json file."""
+        """Evaluate a trained model on a validation set
+        and save the metrics to a json file."""
         logger.info(f"Evaluation started on {datamodule.drug_condition}.")
         init_logger_dict(self.metrics, datamodule.drug_condition)
         if valid:
+            logger.info("Evaluating on validation set")
             loader_source, loader_target = datamodule.valid_dataloaders()
             self.metrics["eval"] = "valid"
         else:
+            logger.info("Evaluating on test set")
             loader_source, loader_target = datamodule.test_dataloaders()
             self.metrics["eval"] = "test"
         for enum, (source, target) in enumerate(zip(loader_source, loader_target)):
+
             if not identity:
                 transport = self.transport(source)
 
@@ -94,20 +101,32 @@ class AbstractTrainer:
                 target = target[:, datamodule.marker_idx]
                 transport = transport[:, datamodule.marker_idx]
 
-            log_metrics(self.metrics, target, transport)
+            log_metrics(
+                self.metrics,
+                target,
+                transport,
+            )
             if enum > n_samples:
                 break
 
-        log_mean_metrics(self.metrics)
+        log_mean_metrics(
+            self.metrics,
+        )
         create_or_update_logfile(self.logger_path, self.metrics)
 
 
 class MongeMapTrainer(AbstractTrainer):
     """Wrapper class for Monge Gap training."""
 
-    def __init__(self, jobid: int, logger_path: Path, config: DotMap) -> None:
+    def __init__(
+        self,
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        checkpoint_manager: CheckpointManager = None,
+    ) -> None:
         super().__init__(jobid, logger_path)
-        self.setup(**config)
+        self.setup(**config, checkpoint_manager=checkpoint_manager)
 
     def setup(
         self,
@@ -118,6 +137,12 @@ class MongeMapTrainer(AbstractTrainer):
         fitting_loss: Dict[str, Any],
         regularizer: Dict[str, Any],
         optim: Dict[str, Any],
+        checkpointing: bool = False,
+        checkpointing_args: Optional[DotMap] = None,
+        checkpoint_manager: Optional[CheckpointManager] = None,
+        checkpoint_crit: Literal[
+            "sinkhorn_div", "monge_gap", "total_loss"
+        ] = "sinkhorn_div",
     ) -> None:
         """Initializes models and optimizers."""
         self.metrics["params"] = {
@@ -137,25 +162,58 @@ class MongeMapTrainer(AbstractTrainer):
         regularizer = partial(regularizer_fn, **regularizer.kwargs)
 
         # setup neural network model
-        model = models.MLP(dim_hidden=dim_hidden, is_potential=False, act_fn=nn.gelu)
+        self.dim_hidden = dim_hidden
+        model = models.MLP(
+            dim_hidden=self.dim_hidden, is_potential=False, act_fn=nn.gelu
+        )
 
         # setup optimizer and scheduler
         opt_fn = optim_factory[optim.name]
-        lr_scheduler = optax.cosine_decay_schedule(init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2)
+        lr_scheduler = optax.cosine_decay_schedule(
+            init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2
+        )
         optimizer = opt_fn(learning_rate=lr_scheduler, **optim.kwargs)
 
         # setup ott-jax solver
-        self.solver = map_estimator.MapEstimator(
-            num_genes,
-            fitting_loss=fitting_loss,
-            regularizer=regularizer,
-            model=model,
-            optimizer=optimizer,
-            regularizer_strength=1,
-            num_train_iters=num_train_iters,
-            logging=True,
-            valid_freq=100,
-        )
+        if not checkpointing:
+            self.solver = map_estimator.MapEstimator(
+                num_genes,
+                fitting_loss=fitting_loss,
+                regularizer=regularizer,
+                model=model,
+                optimizer=optimizer,
+                regularizer_strength=1,
+                num_train_iters=num_train_iters,
+                logging=True,
+                valid_freq=100,
+            )
+        else:
+            if checkpoint_manager is None:
+                logger.info("Creating checkpoint manager in init")
+                options = CheckpointManagerOptions(
+                    best_fn=lambda metrics: metrics[checkpoint_crit],
+                    best_mode="min",
+                    max_to_keep=1,
+                    save_interval_steps=1,
+                )
+
+                checkpoint_manager = CheckpointManager(
+                    directory=checkpointing_args.checkpoint_dir,
+                    options=options,
+                )
+
+            self.solver = EarlyStopMapEstimator(
+                num_genes,
+                fitting_loss=fitting_loss,
+                regularizer=regularizer,
+                model=model,
+                optimizer=optimizer,
+                regularizer_strength=1,
+                num_train_iters=num_train_iters,
+                logging=True,
+                valid_freq=100,
+                checkpoint_manager=checkpoint_manager,
+            )
 
     def train(self, datamodule: AbstractDataModule) -> None:
         """Trains a Monge Map estimator."""
@@ -176,11 +234,44 @@ class MongeMapTrainer(AbstractTrainer):
         """Transports a batch of data using the learned model."""
         return self.state.apply_fn({"params": self.state.params}, source)
 
-    def save_checkpoint(self, path: Path) -> None:
-        raise NotImplementedError
+    def save_checkpoint(
+        self, path: Path = None, checkpoint_options: DotMap = None
+    ) -> None:
+        logger.warning("Current checkpoint will be saved without metrics")
+        if self.solver.checkpoint_manager is None:
+            options = CheckpointManagerOptions(
+                **checkpoint_options,
+            )
 
-    def load_checkpoint(self, path: Path) -> None:
-        raise NotImplementedError
+            self.solver.checkpoint_manager = CheckpointManager(
+                directory=path,
+                options=options,
+            )
+
+        self.solver.checkpoint_manager.save(
+            int(self.state.step),
+            args=StandardSave(self.state),
+            force=True,
+        )
+
+    def load_checkpoint(self, model_config: DotMap, step: int = None) -> None:
+
+        checkpoint_manager = self.solver.checkpoint_manager
+
+        model = models.MLP(
+            dim_hidden=self.dim_hidden, is_potential=False, act_fn=nn.gelu
+        )
+
+        self.solver = EarlyStopMapEstimator.load_from_model_state(
+            checkpoint_manager=checkpoint_manager,
+            model=model,
+            step=step,
+            **model_config,
+        )
+
+        self.state = self.solver.state_neural_net
+
+        logger.info("Loaded MongeMapTrainer from checkpoint")
 
 
 class NeuralDualTrainer(AbstractTrainer):
@@ -217,7 +308,9 @@ class NeuralDualTrainer(AbstractTrainer):
         )
         neural_g = models.MLP(dim_hidden=dim_hidden)
 
-        lr_schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=num_train_iters, alpha=1e-2)
+        lr_schedule = optax.cosine_decay_schedule(
+            init_value=lr, decay_steps=num_train_iters, alpha=1e-2
+        )
         optimizer_f = optax.adamw(learning_rate=lr_schedule, b1=0.5, b2=0.5)
         optimizer_g = optax.adamw(learning_rate=lr_schedule, b1=0.9, b2=0.999)
 
