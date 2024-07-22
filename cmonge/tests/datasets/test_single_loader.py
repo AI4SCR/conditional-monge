@@ -2,6 +2,7 @@ from typing import Iterator
 
 import jax.numpy as jnp
 import pytest
+
 from cmonge.datasets.single_loader import get_train_valid_test_split
 
 

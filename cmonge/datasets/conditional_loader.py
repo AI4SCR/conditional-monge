@@ -3,10 +3,11 @@ from typing import Dict, Iterator, Optional, Tuple
 import jax
 import jax.numpy as jnp
 import scanpy as sc
-from cmonge.datasets.single_loader import AbstractDataModule, DataModuleFactory
-from cmonge.trainers.ae_trainer import AETrainerModule
 from dotmap import DotMap
 from loguru import logger
+
+from cmonge.datasets.single_loader import AbstractDataModule, DataModuleFactory
+from cmonge.trainers.ae_trainer import AETrainerModule
 
 
 class ConditionalDataModule:
@@ -17,7 +18,12 @@ class ConditionalDataModule:
     homogeneous - Train on all conditions but keep out some data from every condition for testing.
     """
 
-    def __init__(self, data_config: DotMap, condition_config: DotMap, ae_config: Optional[DotMap] = None):
+    def __init__(
+        self,
+        data_config: DotMap,
+        condition_config: DotMap,
+        ae_config: Optional[DotMap] = None,
+    ):
         self.data_config = data_config
         self.name = f"cond-{data_config.name}"
         assert condition_config.mode in ["extrapolate", "homogeneous", "custom"]
@@ -148,18 +154,27 @@ class ConditionalDataModule:
 
     def train_dataloaders(
         self,
-    ) -> Dict[str, Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray]]:
+    ) -> Dict[
+        str,
+        Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray],
+    ]:
         logger.info("Setting up train dataloaders.")
         return self.get_loaders_by_type("train")
 
     def valid_dataloaders(
         self,
-    ) -> Dict[str, Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray]]:
+    ) -> Dict[
+        str,
+        Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray],
+    ]:
         logger.info("Setting up valid dataloaders.")
         return self.get_loaders_by_type("valid")
 
     def test_dataloaders(
         self,
-    ) -> Dict[str, Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray]]:
+    ) -> Dict[
+        str,
+        Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray],
+    ]:
         logger.info("Setting up test dataloaders.")
         return self.get_loaders_by_type("test")

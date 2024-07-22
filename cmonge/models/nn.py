@@ -7,7 +7,13 @@ import optax
 from flax.core import frozen_dict
 from jax.nn import initializers
 from ott.solvers.nn.layers import PosDefPotentials
-from ott.solvers.nn.models import ICNN, ModelBase, NeuralTrainState, PotentialGradientFn_t, PotentialValueFn_t
+from ott.solvers.nn.models import (
+    ICNN,
+    ModelBase,
+    NeuralTrainState,
+    PotentialGradientFn_t,
+    PotentialValueFn_t,
+)
 
 
 class PICNN(ICNN):
@@ -35,7 +41,10 @@ class PICNN(ICNN):
         w = []
         for odim in [units[0]] + units[:-1]:
             _w = nn.Dense(
-                odim, use_bias=True, kernel_init=self.init_fn(self.init_std), bias_init=self.init_fn(self.init_std)
+                odim,
+                use_bias=True,
+                kernel_init=self.init_fn(self.init_std),
+                bias_init=self.init_fn(self.init_std),
             )
             w.append(_w)
         self.w = w
@@ -120,7 +129,9 @@ class PICNN(ICNN):
         # self layers for hidden state u, to update z, all ~0
         wu = []
         for odim in units + [1]:
-            _wu = nn.Dense(odim, use_bias=False, kernel_init=self.init_fn(self.init_std))
+            _wu = nn.Dense(
+                odim, use_bias=False, kernel_init=self.init_fn(self.init_std)
+            )
             wu.append(_wu)
         self.wu = wu
 
@@ -134,7 +145,9 @@ class PICNN(ICNN):
             u = self.act_fn(self.w[i](u))
             t_u = jax.nn.softplus(self.wzu[i - 1](u))
             z = self.act_fn(
-                self.wz[i - 1](jnp.multiply(z, t_u)) + self.wx[i](jnp.multiply(x, self.wxu[i](u))) + self.wu[i](u)
+                self.wz[i - 1](jnp.multiply(z, t_u))
+                + self.wx[i](jnp.multiply(x, self.wxu[i](u)))
+                + self.wu[i](u)
             )
 
         z = (
@@ -199,10 +212,10 @@ class ConditionalMLP(ModelBase):
         z = jnp.concatenate((x, c), axis=1)
 
         for n_hidden in self.dim_hidden:
-            Wx = nn.Dense(n_hidden, use_bias=True)
-            z = self.act_fn(Wx(z))
-        Wx = nn.Dense(n_input, use_bias=True)
-        z = x + Wx(z)
+            wx = nn.Dense(n_hidden, use_bias=True)
+            z = self.act_fn(wx(z))
+        wx = nn.Dense(n_input, use_bias=True)
+        z = x + wx(z)
         return z
 
     def create_train_state(
@@ -253,18 +266,18 @@ class DummyMLP(ModelBase):
 
         z = x
         for n_hidden in self.dim_hidden:
-            Wx = nn.Dense(n_hidden, use_bias=True)
-            z = self.act_fn(Wx(z))
+            wx = nn.Dense(n_hidden, use_bias=True)
+            z = self.act_fn(wx(z))
 
         if self.is_potential:
-            Wx = nn.Dense(1, use_bias=True)
-            z = Wx(z).squeeze(-1)
+            wx = nn.Dense(1, use_bias=True)
+            z = wx(z).squeeze(-1)
 
             quad_term = 0.5 * jax.vmap(jnp.dot)(x, x)
             z += quad_term
         else:
-            Wx = nn.Dense(n_input, use_bias=True)
-            z = x + Wx(z)
+            wx = nn.Dense(n_input, use_bias=True)
+            z = x + wx(z)
 
         return z.squeeze(0) if squeeze else z
 
@@ -300,30 +313,19 @@ class ConditionalPerturbationNetwork(ModelBase):
         n_input = x.shape[-1]
         drug_embedding, _ = c[:, :-1], c[:, -1]
 
-        Sc = nn.Dense(1, use_bias=True)
-        dose_embedding = self.act_fn(Sc(c))
-        M = nn.Dense(self.dim_cond, use_bias=True)
-        drug_embedding = self.act_fn(M(drug_embedding))
+        sc = nn.Dense(1, use_bias=True)
+        dose_embedding = self.act_fn(sc(c))
+        m = nn.Dense(self.dim_cond, use_bias=True)
+        drug_embedding = self.act_fn(m(drug_embedding))
 
         z = jnp.concatenate((x, drug_embedding, dose_embedding), axis=1)
 
         for n_hidden in self.dim_hidden:
-            Wx = nn.Dense(n_hidden, use_bias=True)
-            z = self.act_fn(Wx(z))
-        Wx = nn.Dense(n_input, use_bias=True)
+            wx = nn.Dense(n_hidden, use_bias=True)
+            z = self.act_fn(wx(z))
+        wx = nn.Dense(n_input, use_bias=True)
 
-        return x + Wx(z)
-        # for n_hidden in self.dim_hidden:
-        #     Wx = nn.Dense(n_hidden, use_bias=True)
-        #     drug_embedding = self.act_fn(Wx(c))
-
-        # Sc = nn.Dense(1, use_bias=True)
-        # dose_embedding = Sc(c)
-
-        # M = nn.Dense(n_input, use_bias=True)
-        # drug_embedding = M(drug_embedding)
-
-        # return x + drug_embedding * dose_embedding
+        return x + wx(z)
 
     def create_train_state(
         self,

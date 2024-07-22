@@ -5,6 +5,13 @@ from typing import Any, Dict
 
 import jax.numpy as jnp
 import optax
+from dotmap import DotMap
+from flax import linen as nn
+from jax.lib import xla_bridge
+from loguru import logger
+from ott.solvers.nn import models, neuraldual
+from ott.tools import map_estimator
+
 from cmonge.datasets.single_loader import AbstractDataModule
 from cmonge.evaluate import (
     init_logger_dict,
@@ -14,12 +21,6 @@ from cmonge.evaluate import (
 )
 from cmonge.metrics import fitting_loss, regularizer
 from cmonge.utils import create_or_update_logfile, optim_factory
-from dotmap import DotMap
-from flax import linen as nn
-from jax.lib import xla_bridge
-from loguru import logger
-from ott.solvers.nn import models, neuraldual
-from ott.tools import map_estimator
 
 
 class AbstractTrainer:
@@ -141,7 +142,9 @@ class MongeMapTrainer(AbstractTrainer):
 
         # setup optimizer and scheduler
         opt_fn = optim_factory[optim.name]
-        lr_scheduler = optax.cosine_decay_schedule(init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2)
+        lr_scheduler = optax.cosine_decay_schedule(
+            init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2
+        )
         optimizer = opt_fn(learning_rate=lr_scheduler, **optim.kwargs)
 
         # setup ott-jax solver
@@ -217,7 +220,9 @@ class NeuralDualTrainer(AbstractTrainer):
         )
         neural_g = models.MLP(dim_hidden=dim_hidden)
 
-        lr_schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=num_train_iters, alpha=1e-2)
+        lr_schedule = optax.cosine_decay_schedule(
+            init_value=lr, decay_steps=num_train_iters, alpha=1e-2
+        )
         optimizer_f = optax.adamw(learning_rate=lr_schedule, b1=0.5, b2=0.5)
         optimizer_g = optax.adamw(learning_rate=lr_schedule, b1=0.9, b2=0.999)
 

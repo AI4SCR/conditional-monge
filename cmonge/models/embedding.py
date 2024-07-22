@@ -3,13 +3,14 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-from cmonge.datasets.conditional_loader import ConditionalDataModule
-from cmonge.metrics import wasserstein_distance
-from cmonge.models.rdkit import rdkit_feats
 from joblib import Parallel, delayed
 from loguru import logger
 from sklearn import manifold
 from tqdm import tqdm
+
+from cmonge.datasets.conditional_loader import ConditionalDataModule
+from cmonge.metrics import wasserstein_distance
+from cmonge.models.rdkit import rdkit_feats
 
 
 class BaseEmbedding:

@@ -4,22 +4,25 @@ from typing import Literal
 import jax
 import jax.numpy as jnp
 import optax
-from cmonge.datasets.conditional_loader import ConditionalDataModule
-from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
-from cmonge.models.nn import PICNN
-from cmonge.trainers.ot_trainer import AbstractTrainer
-from cmonge.utils import create_or_update_logfile
 from dotmap import DotMap
 from flax.core.scope import FrozenVariableDict
 from loguru import logger
 from ott.solvers.nn.conjugate_solvers import DEFAULT_CONJUGATE_SOLVER
 from ott.solvers.nn.models import ICNN
 
+from cmonge.datasets.conditional_loader import ConditionalDataModule
+from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
+from cmonge.models.nn import PICNN
+from cmonge.trainers.ot_trainer import AbstractTrainer
+from cmonge.utils import create_or_update_logfile
+
 
 class ConditionalTrainer(AbstractTrainer):
     """Wrapper class for conditional neural dual training."""
 
-    def __init__(self, jobid: int, logger_path: Path, config: DotMap, datamodule) -> None:
+    def __init__(
+        self, jobid: int, logger_path: Path, config: DotMap, datamodule
+    ) -> None:
         super().__init__(jobid, logger_path)
         self.init_model(datamodule=datamodule, **config)
         self.create_functions()
@@ -77,7 +80,9 @@ class ConditionalTrainer(AbstractTrainer):
 
         self.conjugate_solver = DEFAULT_CONJUGATE_SOLVER
 
-        lr_schedule = optax.cosine_decay_schedule(init_value=self.lr, decay_steps=self.num_inner_iters, alpha=1e-2)
+        lr_schedule = optax.cosine_decay_schedule(
+            init_value=self.lr, decay_steps=self.num_inner_iters, alpha=1e-2
+        )
         optimizer_f = optax.adamw(learning_rate=lr_schedule)
         optimizer_g = optax.adamw(learning_rate=lr_schedule)
 
@@ -131,39 +136,48 @@ class ConditionalTrainer(AbstractTrainer):
 
         def loss_fn(params_f, params_g, f_value, g_value, g_gradient, batch):
             """Loss function for both potentials."""
-            source, target, condition = batch["source"], batch["target"], batch["condition"]
+            source, target, condition = (
+                batch["source"],
+                batch["target"],
+                batch["condition"],
+            )
 
             init_source_hat = g_gradient(params_g)(target, condition)
             batch_dot = jax.vmap(jnp.dot)
 
             f_source = f_value(params_f)(source, condition)
-            f_star_target = batch_dot(init_source_hat, target) - f_value(params_f)(init_source_hat, condition)
+            f_star_target = batch_dot(init_source_hat, target) - f_value(params_f)(
+                init_source_hat, condition
+            )
             dual_source = f_source.mean()
             dual_target = f_star_target.mean()
             loss_f = dual_source + dual_target
 
             f_value_parameters_detached = f_value(jax.lax.stop_gradient(params_f))
             loss_g = (
-                f_value_parameters_detached(init_source_hat, condition) - batch_dot(init_source_hat, target)
+                f_value_parameters_detached(init_source_hat, condition)
+                - batch_dot(init_source_hat, target)
             ).mean()
 
             # compute Wasserstein-2 distance
-            C = jnp.mean(jnp.sum(source**2, axis=-1)) + jnp.mean(jnp.sum(target**2, axis=-1))
-            W2_dist = C - 2.0 * (f_source.mean() + f_star_target.mean())
+            c = jnp.mean(jnp.sum(source**2, axis=-1)) + jnp.mean(
+                jnp.sum(target**2, axis=-1)
+            )
+            w2_dist = c - 2.0 * (f_source.mean() + f_star_target.mean())
 
             if not self.pos_weights:
-                penalty = self.beta * self._penalize_weights_icnn(params_f) + self.beta * self._penalize_weights_icnn(
-                    params_g
-                )
+                penalty = self.beta * self._penalize_weights_icnn(
+                    params_f
+                ) + self.beta * self._penalize_weights_icnn(params_g)
                 loss_f += penalty
                 loss_g += penalty
             else:
                 penalty = 0
 
             if to_optimize == "f":
-                return loss_f, (W2_dist, loss_f, loss_g, penalty)
+                return loss_f, (w2_dist, loss_f, loss_g, penalty)
             if to_optimize == "g":
-                return loss_g, (W2_dist, loss_f, loss_g, penalty)
+                return loss_g, (w2_dist, loss_f, loss_g, penalty)
 
         @jax.jit
         def step_fn(state_f, state_g, batch):
@@ -171,7 +185,7 @@ class ConditionalTrainer(AbstractTrainer):
             grad_fn = jax.value_and_grad(loss_fn, argnums=[0, 1], has_aux=True)
             if train:
                 # compute loss and gradients
-                (_, (W2_dist, loss_f, loss_g, penalty)), (grads_f, grads_g) = grad_fn(
+                (_, (w2_dist, loss_f, loss_g, penalty)), (grads_f, grads_g) = grad_fn(
                     state_f.params,
                     state_g.params,
                     state_f.potential_value_fn,
@@ -181,13 +195,25 @@ class ConditionalTrainer(AbstractTrainer):
                 )
 
                 if to_optimize == "f":
-                    return state_f.apply_gradients(grads=grads_f), W2_dist, loss_f, loss_g, penalty
+                    return (
+                        state_f.apply_gradients(grads=grads_f),
+                        w2_dist,
+                        loss_f,
+                        loss_g,
+                        penalty,
+                    )
                 if to_optimize == "g":
-                    return state_g.apply_gradients(grads=grads_g), W2_dist, loss_f, loss_g, penalty
+                    return (
+                        state_g.apply_gradients(grads=grads_g),
+                        w2_dist,
+                        loss_f,
+                        loss_g,
+                        penalty,
+                    )
                 raise ValueError("Optimization target has been misspecified.")
 
             # compute loss and gradients
-            (_, (W2_dist, loss_f, loss_g, penalty)), _ = grad_fn(
+            (_, (w2_dist, loss_f, loss_g, penalty)), _ = grad_fn(
                 state_f.params,
                 state_g.params,
                 state_f.potential_value_fn,
@@ -196,7 +222,7 @@ class ConditionalTrainer(AbstractTrainer):
                 batch,
             )
 
-            return W2_dist, loss_f, loss_g, penalty
+            return w2_dist, loss_f, loss_g, penalty
 
         return step_fn
 
@@ -223,27 +249,37 @@ class ConditionalTrainer(AbstractTrainer):
             condition = datamodule.sample_condition("train")
             trainloader_source, trainloader_target = condition_to_loaders[condition]
             condition = self.embeddings[condition]
-            condition_batch = jnp.asarray([condition for _ in range(datamodule.batch_size)])
+            condition_batch = jnp.asarray(
+                [condition for _ in range(datamodule.batch_size)]
+            )
 
             for _ in range(self.num_inner_iters):
                 batch_g["source"] = jnp.asarray(next(trainloader_source))
                 batch_g["target"] = jnp.asarray(next(trainloader_target))
                 batch_g["condition"] = condition_batch
 
-                self.state_g, w_dist, loss_f, loss_g, penalty = self.train_step_g(self.state_f, self.state_g, batch_g)
+                self.state_g, w_dist, loss_f, loss_g, penalty = self.train_step_g(
+                    self.state_f, self.state_g, batch_g
+                )
 
             batch_f["source"] = jnp.asarray(next(trainloader_source))
             batch_f["target"] = jnp.asarray(next(trainloader_target))
             batch_f["condition"] = condition_batch
 
-            self.state_f, w_dist, loss_f, loss_g, penalty = self.train_step_f(self.state_f, self.state_g, batch_f)
+            self.state_f, w_dist, loss_f, loss_g, penalty = self.train_step_f(
+                self.state_f, self.state_g, batch_f
+            )
 
             if valid and step % 100 == 0 and step > 0:
                 condition = datamodule.sample_condition("valid")
                 valid_condition_to_loaders = datamodule.valid_dataloaders()
-                validloader_source, validloader_target = valid_condition_to_loaders[condition]
+                validloader_source, validloader_target = valid_condition_to_loaders[
+                    condition
+                ]
                 condition = self.embeddings[condition]
-                condition_batch = jnp.asarray([condition for _ in range(datamodule.batch_size)])
+                condition_batch = jnp.asarray(
+                    [condition for _ in range(datamodule.batch_size)]
+                )
 
                 valid_batch["source"] = jnp.asarray(next(validloader_source))
                 valid_batch["target"] = jnp.asarray(next(validloader_target))
@@ -254,7 +290,9 @@ class ConditionalTrainer(AbstractTrainer):
                 )
 
                 self.update_logging(train_logs, loss_f, loss_g, w_dist, "train", step)
-                self.update_logging(valid_logs, valid_loss_f, valid_loss_g, valid_w_dist, "valid", step)
+                self.update_logging(
+                    valid_logs, valid_loss_f, valid_loss_g, valid_w_dist, "valid", step
+                )
 
         self.metrics["ottlogs"] = {"train_logs": train_logs, "valid_logs": valid_logs}
         logger.info("Training finished.")
@@ -274,7 +312,10 @@ class ConditionalTrainer(AbstractTrainer):
     def generate_embeddings(self, datamodule: ConditionalDataModule):
         assert self.embedding in ["dosage", "dense"]
         if self.embedding == "dosage":
-            embeddings = {cond: [int(cond.split("-")[1]) / 10000] for cond in datamodule.conditions}
+            embeddings = {
+                cond: [int(cond.split("-")[1]) / 10000]
+                for cond in datamodule.conditions
+            }
             self.embeddings = embeddings
             datamodule.embeddings = embeddings
 
@@ -317,24 +358,42 @@ class ConditionalTrainer(AbstractTrainer):
         for cond, loader in cond_to_loaders.items():
             logger.info(f"Evaluation started on {cond} (in-sample).")
             cond_embedding = self.embeddings[cond]
-            cond_embedding = jnp.asarray([[cond_embedding] for _ in range(datamodule.batch_size)])
+            cond_embedding = jnp.asarray(
+                [[cond_embedding] for _ in range(datamodule.batch_size)]
+            )
             loader_source, loader_target = loader
 
             self.metrics[f"in-sample-{cond}"] = {}
-            init_logger_dict(self.metrics[f"in-sample-{cond}"], datamodule.drug_condition)
-            evaluate_condition(loader_source, loader_target, cond_embedding, self.metrics[f"in-sample-{cond}"])
+            init_logger_dict(
+                self.metrics[f"in-sample-{cond}"], datamodule.drug_condition
+            )
+            evaluate_condition(
+                loader_source,
+                loader_target,
+                cond_embedding,
+                self.metrics[f"in-sample-{cond}"],
+            )
             log_mean_metrics(self.metrics[f"in-sample-{cond}"])
 
         cond_to_loaders = datamodule.valid_dataloaders()
         for cond, loader in cond_to_loaders.items():
             logger.info(f"Evaluation started on {cond} (out-sample).")
             cond_embedding = self.embeddings[cond]
-            cond_embedding = jnp.asarray([[cond_embedding] for _ in range(datamodule.batch_size)])
+            cond_embedding = jnp.asarray(
+                [[cond_embedding] for _ in range(datamodule.batch_size)]
+            )
             loader_source, loader_target = loader
 
             self.metrics[f"out-sample-{cond}"] = {}
-            init_logger_dict(self.metrics[f"out-sample-{cond}"], datamodule.drug_condition)
-            evaluate_condition(loader_source, loader_target, cond_embedding, self.metrics[f"out-sample-{cond}"])
+            init_logger_dict(
+                self.metrics[f"out-sample-{cond}"], datamodule.drug_condition
+            )
+            evaluate_condition(
+                loader_source,
+                loader_target,
+                cond_embedding,
+                self.metrics[f"out-sample-{cond}"],
+            )
             log_mean_metrics(self.metrics[f"out-sample-{cond}"])
 
         create_or_update_logfile(self.logger_path, self.metrics)

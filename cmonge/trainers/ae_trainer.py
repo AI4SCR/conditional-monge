@@ -7,13 +7,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from cmonge.utils import activation_factory, optim_factory
 from dotmap import DotMap
 from flax import linen as nn
 from flax.core.frozen_dict import FrozenDict
 from flax.training import checkpoints
 from flax.training.train_state import TrainState
 from loguru import logger
+
+from cmonge.utils import activation_factory, optim_factory
 
 if TYPE_CHECKING:
     from cmonge.datasets.single_loader import AbstractDataModule
@@ -29,8 +30,8 @@ class Encoder(nn.Module):
     @nn.compact
     def __call__(self, x):
         for n_hidden in self.hidden_dims:
-            W = nn.Dense(n_hidden, use_bias=True)
-            x = self.act_fn(W(x))
+            w = nn.Dense(n_hidden, use_bias=True)
+            x = self.act_fn(w(x))
         x = nn.Dense(features=self.latent_dim)(x)
         return x
 
@@ -45,8 +46,8 @@ class Decoder(nn.Module):
     @nn.compact
     def __call__(self, x):
         for n_hidden in self.hidden_dims:
-            W = nn.Dense(n_hidden, use_bias=True)
-            x = self.act_fn(W(x))
+            w = nn.Dense(n_hidden, use_bias=True)
+            x = self.act_fn(w(x))
         x = nn.Dense(features=self.data_dim)(x)
         return x
 
@@ -106,14 +107,21 @@ class AETrainerModule:
         opt_fn = optim_factory[self.config.optim.optimizer]
         optimizer = opt_fn(learning_rate=lr_scheduler, **self.config.optim.kwargs)
 
-        self.state = TrainState.create(apply_fn=self.model.apply, params=params, tx=optimizer)
+        self.state = TrainState.create(
+            apply_fn=self.model.apply, params=params, tx=optimizer
+        )
 
     def create_functions(self):
         """Define jitted train and eval step on a batch of input."""
 
         def train_step(state: TrainState, batch: jnp.ndarray):
-            loss_fn = lambda params: mse_reconstruction_loss(self.model, params, batch)  # noqa: E731
-            loss, grads = jax.value_and_grad(loss_fn)(state.params)  # Get loss and gradients for loss
+
+            def loss_fn(params):
+                return mse_reconstruction_loss(self.model, params, batch)
+
+            loss, grads = jax.value_and_grad(loss_fn)(
+                state.params
+            )  # Get loss and gradients for loss
             state = state.apply_gradients(grads=grads)  # Optimizer update step
             return state, loss
 
@@ -154,11 +162,19 @@ class AETrainerModule:
                 if eval_loss < best_eval and self.config.training.cpkt:
                     best_eval = eval_loss
                     self.compute_latent_shift(datamodule)
-                    self.save_model(dataset_name=datamodule.name, drug_condition=datamodule.drug_condition, step=epoch)
+                    self.save_model(
+                        dataset_name=datamodule.name,
+                        drug_condition=datamodule.drug_condition,
+                        step=epoch,
+                    )
 
         # save the final model if no checkpointing
         if not self.config.training.cpkt:
-            self.save_model(dataset_name=datamodule.name, drug_condition=datamodule.drug_condition, step=epoch)
+            self.save_model(
+                dataset_name=datamodule.name,
+                drug_condition=datamodule.drug_condition,
+                step=epoch,
+            )
         logger.info("Training finished.")
 
     def save_model(self, dataset_name: str, drug_condition: str, step: int = 0):
@@ -195,7 +211,9 @@ class AETrainerModule:
             logger.info("AE Model checkpoint loaded.")
             logger.info(f"AE Model: {prefix}")
 
-        self.state = TrainState.create(apply_fn=self.model.apply, params=cpkt["params"], tx=self.state.tx)
+        self.state = TrainState.create(
+            apply_fn=self.model.apply, params=cpkt["params"], tx=self.state.tx
+        )
         self.latent_shift = cpkt["latent_shift"]
 
     def compute_latent_shift(self, datamodule: AbstractDataModule):
