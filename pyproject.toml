@@ -34,6 +34,7 @@ isort = "^5.13.2"
 black = "^24.4.2"
 ruff = "^0.5.4"
 types-pyyaml = "^6.0.12.20240311"
+scipy = "1.12.0"
 
 [[tool.poetry.source]]
 name = "jax"
