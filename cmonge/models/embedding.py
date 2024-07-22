@@ -206,13 +206,14 @@ class CAR11DimEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
+        batch_size=None,  # For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
         if not checkpoint:
             labels = datamodule.train_conditions
-            
-            car_11d=pd.DataFrame([self.encode_CAR_11dim(label) for label in labels]).T
+
+            car_11d = pd.DataFrame([self.encode_CAR_11dim(label) for label in labels]).T
             car_11d.colums = labels
             self.model_dir.mkdir(parents=True, exist_ok=True)
             model_dir = self.model_dir / name
@@ -226,8 +227,7 @@ class CAR11DimEmbedding(BaseEmbedding):
             values = jnp.asarray(row.values.astype("float"))
             self.embeddings[index] = values
 
-
-    def encode_CAR_11dim(self, CAR: str)->list:
+    def encode_CAR_11dim(self, CAR: str) -> list:
         """
         Compute one-hot encoding of CAR variant on 15 bits.
         Use alphabetical order of CAR domains: 41BB, CD28, CD40, CTLA4, IL15RA.
@@ -266,6 +266,7 @@ class CAR11DimEmbedding(BaseEmbedding):
         condition_batch = jnp.asarray([condition for _ in range(self.batch_size)])
         return condition_batch
 
+
 class CAR16DimEmbedding(BaseEmbedding):
     def __init__(
         self,
@@ -273,13 +274,14 @@ class CAR16DimEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
+        batch_size=None,  # For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
         if not checkpoint:
             labels = datamodule.train_conditions
-            
-            car_16d=pd.DataFrame([self.encode_CAR_16dim(label) for label in labels]).T
+
+            car_16d = pd.DataFrame([self.encode_CAR_16dim(label) for label in labels]).T
             car_16d.colums = labels
             self.model_dir.mkdir(parents=True, exist_ok=True)
             model_dir = self.model_dir / name
@@ -292,7 +294,6 @@ class CAR16DimEmbedding(BaseEmbedding):
         for index, row in car_16d.T.iterrows():
             values = jnp.asarray(row.values.astype("float"))
             self.embeddings[index] = values
-
 
     def encode_CAR_16dim(CAR):
         """
@@ -343,11 +344,14 @@ class CarEsmSmall(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
+        batch_size=None,  # For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
         if not checkpoint:
-            logger.error("ESM embedding only works with checkpoint, please save a pre-computed embedding")
+            logger.error(
+                "ESM embedding only works with checkpoint, please save a pre-computed embedding"
+            )
         else:
             model_dir = self.model_dir / name
             embed = pd.read_csv(model_dir)
@@ -362,6 +366,7 @@ class CarEsmSmall(BaseEmbedding):
         condition_batch = jnp.asarray([condition for _ in range(self.batch_size)])
         return condition_batch
 
+
 class MetaDataEmbedding(BaseEmbedding):
     def __init__(
         self,
@@ -369,32 +374,50 @@ class MetaDataEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
+        batch_size=None,  # For compatability
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
         dataset = datamodule.data_config.file_path.split("/")[-1][:-5]
         if not checkpoint:
             adata = datamodule.data_config.parent
-            group="CAR_Variant"
-            cont_scores = ["Cytotoxicity_1", "Proinflamatory_2", "Memory_3", "CD4_Th1_4", "CD4_Th2_5", 'S.Score', 'G2M.Score']
+            group = "CAR_Variant"
+            cont_scores = [
+                "Cytotoxicity_1",
+                "Proinflamatory_2",
+                "Memory_3",
+                "CD4_Th1_4",
+                "CD4_Th2_5",
+                "S.Score",
+                "G2M.Score",
+            ]
             fraction_scores = ["Donor", "Time", "Phase", "ident", "subset"]
-            
-            means = adata.obs[[group] +  cont_scores].groupby(group).mean()
-            stds = adata.obs[[group] +  cont_scores].groupby(group).std()
-            cont_features = means.merge(stds, left_index=True, right_index=True, suffixes=("_mean", "_std"))
+
+            means = adata.obs[[group] + cont_scores].groupby(group).mean()
+            stds = adata.obs[[group] + cont_scores].groupby(group).std()
+            cont_features = means.merge(
+                stds, left_index=True, right_index=True, suffixes=("_mean", "_std")
+            )
 
             group_size = adata.obs.groupby(group).size()
             all_cat_counts = []
             for cat in fraction_scores:
-                temp = adata.obs.groupby([group, cat], observed=False).size().reset_index(drop=False)
-                temp = pd.pivot_table(data=temp, index=group, columns=cat, values=0, observed=False)
+                temp = (
+                    adata.obs.groupby([group, cat], observed=False)
+                    .size()
+                    .reset_index(drop=False)
+                )
+                temp = pd.pivot_table(
+                    data=temp, index=group, columns=cat, values=0, observed=False
+                )
                 all_cat_counts.append(temp)
 
             cat_features = pd.concat(all_cat_counts, axis=1)
             cat_features = cat_features.div(group_size, axis=0)
 
-            embedding = cont_features.merge(cat_features, left_index=True, right_index=True).T
-
+            embedding = cont_features.merge(
+                cat_features, left_index=True, right_index=True
+            ).T
 
             self.model_dir.mkdir(parents=True, exist_ok=True)
             model_dir = self.model_dir / f"{dataset}_{name}"
@@ -407,7 +430,6 @@ class MetaDataEmbedding(BaseEmbedding):
         for index, row in embedding.T.iterrows():
             values = jnp.asarray(row.values.astype("float"))
             self.embeddings[index] = values
-
 
     def __call__(self, condition: str):
         condition = self.embeddings[condition]
