@@ -22,10 +22,7 @@ class DoseEmbedding(BaseEmbedding):
     def __init__(self, datamodule: ConditionalDataModule) -> None:
         super().__init__(datamodule.batch_size)
         self.datamodule = datamodule
-        embeddings = {
-            cond: [int(cond.split("-")[1]) / 10000]
-            for cond in self.datamodule.conditions
-        }
+        embeddings = {cond: [int(cond.split("-")[1]) / 10000] for cond in self.datamodule.conditions}
         self.embeddings = embeddings
 
     def __call__(self, condition: str):
@@ -37,14 +34,14 @@ class DoseEmbedding(BaseEmbedding):
 class RDKitEmbedding(BaseEmbedding):
     def __init__(
         self,
+        batch_size: int,
         checkpoint: bool,
         smile_path: str,
         drug_to_smile_path: str,
         name: str,
         model_dir: str,
-        datamodule: ConditionalDataModule,  # For compatability
     ) -> None:
-        super().__init__(datamodule.batch_size)
+        super().__init__(batch_size)
         self.smile_path = Path(smile_path)
         self.drug_to_smile_path = Path(drug_to_smile_path)
         self.model_dir = Path(model_dir)
@@ -56,8 +53,7 @@ class RDKitEmbedding(BaseEmbedding):
             # caclulate mebeddings
             n_jobs = 16
             data = Parallel(n_jobs=n_jobs)(
-                delayed(rdkit_feats)(smiles)
-                for smiles in tqdm(smiles_list, position=0, leave=True)
+                delayed(rdkit_feats)(smiles) for smiles in tqdm(smiles_list, position=0, leave=True)
             )
 
             # clean data, drop nans and infs
@@ -90,9 +86,7 @@ class RDKitEmbedding(BaseEmbedding):
             ][["drug", "smile"]]
 
             df = pd.DataFrame(
-                data=embedding,
-                index=smiles_list,
-                columns=[f"latent_{i}" for i in range(embedding.shape[1])],
+                data=embedding, index=smiles_list, columns=[f"latent_{i}" for i in range(embedding.shape[1])]
             )
 
             # Drop first feature from generator (RDKit2D_calculated)
@@ -102,10 +96,7 @@ class RDKitEmbedding(BaseEmbedding):
             threshold = 0.01
             columns = [f"latent_{idx+1}" for idx in np.where(df.std() <= threshold)[0]]
             print(f"Deleting columns with std<={threshold}: {columns}")
-            df.drop(
-                columns=[f"latent_{idx+1}" for idx in np.where(df.std() <= 0.01)[0]],
-                inplace=True,
-            )
+            df.drop(columns=[f"latent_{idx+1}" for idx in np.where(df.std() <= 0.01)[0]], inplace=True)
 
             # normalize and merge with drug names
             normalized_df = (df - df.mean()) / df.std()
@@ -134,47 +125,28 @@ class RDKitEmbedding(BaseEmbedding):
 
 
 class ModeOfActionEmbedding(BaseEmbedding):
-    def __init__(
-        self,
-        datamodule: ConditionalDataModule,
-        checkpoint: bool,
-        name: str,
-        model_dir: str,
-    ) -> None:
+    def __init__(self, datamodule: ConditionalDataModule, checkpoint: bool, name: str, model_dir: str) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
         if not checkpoint:
             labels = datamodule.train_conditions
-            similarity_matrix = jnp.full(
-                shape=(len(labels), len(labels)), fill_value=jnp.inf
-            )
+            similarity_matrix = jnp.full(shape=(len(labels), len(labels)), fill_value=jnp.inf)
 
             cond_to_loaders = datamodule.train_dataloaders()
             with tqdm(total=len(labels) ** 2) as pbar:
                 for i, (cond_i, loader_i) in enumerate(cond_to_loaders.items()):
                     for j, (cond_j, loader_j) in enumerate(cond_to_loaders.items()):
-                        if (
-                            similarity_matrix.at[i, j].get() == jnp.inf
-                            and similarity_matrix.at[j, i].get() == jnp.inf
-                        ):
+                        if similarity_matrix.at[i, j].get() == jnp.inf and similarity_matrix.at[j, i].get() == jnp.inf:
                             target_batch_i = next(loader_i[1])
                             target_batch_j = next(loader_j[1])
-                            w_dist = wasserstein_distance(
-                                target_batch_i, target_batch_j
-                            )
+                            w_dist = wasserstein_distance(target_batch_i, target_batch_j)
                             similarity_matrix = similarity_matrix.at[i, j].set(w_dist)
                             similarity_matrix = similarity_matrix.at[j, i].set(w_dist)
                         pbar.update(1)
 
-            similarity = pd.DataFrame(
-                data=similarity_matrix, columns=labels, index=labels
-            )
-            embedding, stress = manifold.smacof(
-                similarity_matrix, metric=True, n_components=10
-            )
-            embedding_norm = (embedding - embedding.min()) / (
-                embedding.max() - embedding.min()
-            )
+            similarity = pd.DataFrame(data=similarity_matrix, columns=labels, index=labels)
+            embedding, stress = manifold.smacof(similarity_matrix, metric=True, n_components=10)
+            embedding_norm = (embedding - embedding.min()) / (embedding.max() - embedding.min())
             smacof_10d = pd.DataFrame(data=embedding_norm.T, columns=labels)
 
             self.model_dir.mkdir(parents=True, exist_ok=True)
@@ -199,8 +171,4 @@ class ModeOfActionEmbedding(BaseEmbedding):
         return condition_batch
 
 
-embed_factory = {
-    "rdkit": RDKitEmbedding,
-    "dose": DoseEmbedding,
-    "moa": ModeOfActionEmbedding,
-}
+embed_factory = {"rdkit": RDKitEmbedding, "dose": DoseEmbedding, "moa": ModeOfActionEmbedding}

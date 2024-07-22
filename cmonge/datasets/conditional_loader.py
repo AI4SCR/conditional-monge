@@ -155,11 +155,11 @@ class ConditionalDataModule:
     def valid_dataloaders(
         self,
     ) -> Dict[str, Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray]]:
-        logger.info("Setting up valid dataloaders.")
+        logger.info("Setting up train dataloaders.")
         return self.get_loaders_by_type("valid")
 
     def test_dataloaders(
         self,
     ) -> Dict[str, Iterator[jnp.ndarray] | Tuple[Iterator[jnp.ndarray]] | Iterator[jnp.ndarray]]:
-        logger.info("Setting up test dataloaders.")
+        logger.info("Setting up train dataloaders.")
         return self.get_loaders_by_type("test")

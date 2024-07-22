@@ -183,7 +183,7 @@ class AETrainerModule:
         model_dir = self.model_dir / dataset_name
         target = {"params": self.state.params, "latent_shift": self.latent_shift}
         prefix = f"autoencoder_{self.model.latent_dim}_{dataset_name}_{drug_condition}_"
-        logger.info(f"Loading AE model checkpoint from {model_dir}, {prefix}")
+        logger.info(f"Loading AE model checkpoint from {prefix}")
         cpkt = checkpoints.restore_checkpoint(
             ckpt_dir=model_dir,
             prefix=prefix,
