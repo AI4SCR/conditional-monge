@@ -1,7 +1,7 @@
 import abc
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Optional, Literal
+from typing import Any, Dict
 
 import jax.numpy as jnp
 import optax
@@ -13,15 +13,15 @@ from cmonge.evaluate import (
     log_point_clouds,
 )
 from cmonge.metrics import fitting_loss, regularizer
-from cmonge.models.mestibator import EarlyStopMapEstimator
 from cmonge.utils import create_or_update_logfile, optim_factory
 from dotmap import DotMap
 from flax import linen as nn
+from flax.training.orbax_utils import save_args_from_target
 from jax.lib import xla_bridge
 from loguru import logger
+from ott.tools import map_estimator
 from ott.solvers.nn import models, neuraldual
-from orbax.checkpoint import CheckpointManagerOptions, CheckpointManager
-from orbax.checkpoint.args import StandardSave
+from orbax.checkpoint import PyTreeCheckpointer
 
 
 class AbstractTrainer:
@@ -122,10 +122,9 @@ class MongeMapTrainer(AbstractTrainer):
         jobid: int,
         logger_path: Path,
         config: DotMap,
-        checkpoint_manager: CheckpointManager = None,
     ) -> None:
         super().__init__(jobid, logger_path)
-        self.setup(**config, checkpoint_manager=checkpoint_manager)
+        self.setup(**config)
 
     def setup(
         self,
@@ -136,12 +135,7 @@ class MongeMapTrainer(AbstractTrainer):
         fitting_loss: Dict[str, Any],
         regularizer: Dict[str, Any],
         optim: Dict[str, Any],
-        checkpointing: bool = False,
-        checkpointing_args: Optional[DotMap] = None,
-        checkpoint_manager: Optional[CheckpointManager] = None,
-        checkpoint_crit: Literal[
-            "sinkhorn_div", "monge_gap", "total_loss"
-        ] = "sinkhorn_div",
+        checkpointing_path: str = None,
     ) -> None:
         """Initializes models and optimizers."""
         self.metrics["params"] = {
@@ -172,21 +166,9 @@ class MongeMapTrainer(AbstractTrainer):
             init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2
         )
         optimizer = opt_fn(learning_rate=lr_scheduler, **optim.kwargs)
-        if checkpoint_manager is None:
-            logger.info("Creating checkpoint manager in init")
-            options = CheckpointManagerOptions(
-                best_fn=lambda metrics: metrics[checkpoint_crit],
-                best_mode="min",
-                max_to_keep=1,
-                save_interval_steps=1,
-            )
 
-            checkpoint_manager = CheckpointManager(
-                directory=checkpointing_args.checkpoint_dir,
-                options=options,
-            )
-
-        self.solver = EarlyStopMapEstimator(
+        # setup ott-jax solver
+        self.solver = map_estimator.MapEstimator(
             num_genes,
             fitting_loss=fitting_loss,
             regularizer=regularizer,
@@ -196,8 +178,6 @@ class MongeMapTrainer(AbstractTrainer):
             num_train_iters=num_train_iters,
             logging=True,
             valid_freq=100,
-            checkpoint_manager=checkpoint_manager,
-            checkpointing=checkpointing,
         )
 
     def train(self, datamodule: AbstractDataModule) -> None:
@@ -219,44 +199,50 @@ class MongeMapTrainer(AbstractTrainer):
         """Transports a batch of data using the learned model."""
         return self.state.apply_fn({"params": self.state.params}, source)
 
-    def save_checkpoint(
-        self, path: Path = None, checkpoint_options: DotMap = None
+    def save_checkpoint(self, path: Path = None, config: DotMap = None) -> None:
+        if path is None and config is None:
+            logger.error(
+                """Please provide a checkpoint save path
+            either directly or through the config"""
+            )
+        elif path is None:
+            path = config.checkpointing_path
+
+        ckpt = self.solver.state_neural_net
+        checkpointer = PyTreeCheckpointer()
+        save_args = save_args_from_target(ckpt)
+        checkpointer.save(path, ckpt, save_args=save_args, force=True)
+
+    @classmethod
+    def load_checkpoint(
+        cls,
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        ckpt_path: Path = None,
     ) -> None:
-        logger.warning("Current checkpoint will be saved without metrics")
-        if self.solver.checkpoint_manager is None:
-            options = CheckpointManagerOptions(
-                **checkpoint_options,
-            )
-
-            self.solver.checkpoint_manager = CheckpointManager(
-                directory=path,
-                options=options,
-            )
-
-        self.solver.checkpoint_manager.save(
-            int(self.state.step),
-            args=StandardSave(self.state),
-            force=True,
+        out_class = cls(
+            jobid=jobid,
+            logger_path=logger_path,
+            config=config,
         )
 
-    def load_checkpoint(self, model_config: DotMap, step: int = None) -> None:
+        if ckpt_path is None:
+            if len(config.checkpointing_path) > 0:
+                ckpt_path = config.checkpointing_path
+            else:
+                logger.error(
+                    """Provide checkpointing path either directly or
+                    through the model config"""
+                )
 
-        checkpoint_manager = self.solver.checkpoint_manager
-
-        model = models.MLP(
-            dim_hidden=self.dim_hidden, is_potential=False, act_fn=nn.gelu
+        checkpointer = PyTreeCheckpointer()
+        out_class.solver.state_neural_net = checkpointer.restore(
+            ckpt_path, item=out_class.solver.state_neural_net
         )
-
-        self.solver = EarlyStopMapEstimator.load_from_model_state(
-            checkpoint_manager=checkpoint_manager,
-            model=model,
-            step=step,
-            **model_config,
-        )
-
-        self.state = self.solver.state_neural_net
-
+        out_class.state = out_class.solver.state_neural_net
         logger.info("Loaded MongeMapTrainer from checkpoint")
+        return out_class
 
 
 class NeuralDualTrainer(AbstractTrainer):
