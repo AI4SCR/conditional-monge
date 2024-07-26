@@ -24,7 +24,10 @@ def monge_get_source_target_transport(
     target=True,
     source=True,
     transport=True,
+    batch_size: int = None,
 ):
+    if batch_size is None:
+        batch_size = datamodule.batch_size
     if datamodule.split[2] > 0:
         print("Evaluating on test set")
         split_type = "test"
@@ -34,76 +37,68 @@ def monge_get_source_target_transport(
         split_type = "valid"
     else:
         print("Evaluating on training set")
-    split_type = "train"
+        split_type = "train"
     all_expr = []
     all_meta = []
     for i in range(n_samples):
         if split_type == "valid":
-            if len(datamodule.target_valid_cells.tolist()) >= datamodule.batch_size:
-                sel_target_cells = random.sample(
-                    datamodule.target_valid_cells.tolist(),
-                    datamodule.data_config.batch_size,
-                )
-                sel_control_cells = random.sample(
-                    datamodule.control_valid_cells.tolist(),
-                    datamodule.batch_size,
-                )
-            else:
-                continue
+            sel_target_cells = random.sample(
+                datamodule.target_valid_cells.tolist(),
+                batch_size,
+            )
+            sel_control_cells = random.sample(
+                datamodule.control_valid_cells.tolist(),
+                batch_size,
+            )
 
         elif split_type == "test":
-            if len(datamodule.target_test_cells.tolist()) >= datamodule.batch_size:
-
-                sel_target_cells = random.sample(
-                    datamodule.target_test_cells.tolist(), datamodule.batch_size
-                )
-                sel_control_cells = random.sample(
-                    datamodule.control_test_cells.tolist(),
-                    datamodule.batch_size,
-                )
+            sel_target_cells = random.sample(
+                datamodule.target_test_cells.tolist(), batch_size
+            )
+            sel_control_cells = random.sample(
+                datamodule.control_test_cells.tolist(),
+                batch_size,
+            )
         elif split_type == "train":
-            if len(datamodule.target_train_cells.tolist()) >= datamodule.batch_size:
-                sel_target_cells = random.sample(
-                    datamodule.target_train_cells.tolist(),
-                    datamodule.batch_size,
-                )
-                sel_control_cells = random.sample(
-                    datamodule.control_train_cells.tolist(),
-                    datamodule.batch_size,
-                )
+            sel_target_cells = random.sample(
+                datamodule.target_train_cells.tolist(),
+                batch_size,
+            )
+            sel_control_cells = random.sample(
+                datamodule.control_train_cells.tolist(),
+                batch_size,
+            )
 
-            cond_expr = datamodule.adata[sel_target_cells].X
-            cond_meta = datamodule.adata.obs.loc[sel_target_cells, :]
+        cond_expr = datamodule.adata[sel_target_cells].X
+        cond_meta = datamodule.adata.obs.loc[sel_target_cells, :]
 
-            source_expr = datamodule.adata[sel_control_cells].X
-            source_meta = datamodule.adata.obs.loc[sel_control_cells, :]
+        source_expr = datamodule.adata[sel_control_cells].X
+        source_meta = datamodule.adata.obs.loc[sel_control_cells, :]
 
-            if target:
-                cond_meta["sample_n"] = i
-                cond_meta["dtype"] = "target"
-                all_expr.append(
-                    pd.DataFrame(cond_expr, columns=datamodule.adata.var_names)
-                )
-                all_meta.append(cond_meta)
+        if target:
+            cond_meta["sample_n"] = i
+            cond_meta["dtype"] = "target"
+            all_expr.append(pd.DataFrame(cond_expr, columns=datamodule.adata.var_names))
+            all_meta.append(cond_meta)
 
-            if source:
-                source_meta["dtype"] = "source"
-                source_meta["sample_n"] = i
+        if source:
+            source_meta["dtype"] = "source"
+            source_meta["sample_n"] = i
 
-                all_meta.append(source_meta)
-                all_expr.append(
-                    pd.DataFrame(source_expr, columns=datamodule.adata.var_names)
-                )
+            all_meta.append(source_meta)
+            all_expr.append(
+                pd.DataFrame(source_expr, columns=datamodule.adata.var_names)
+            )
 
-            if transport:
-                trans = trainer.transport(source_expr)
-                trans = datamodule.decoder(trans)
-                trans_meta = cond_meta.copy()
-                trans_meta["dtype"] = "transport"
-                trans_meta["sample_n"] = i
+        if transport:
+            trans = trainer.transport(source_expr)
+            trans = datamodule.decoder(trans)
+            trans_meta = cond_meta.copy()
+            trans_meta["dtype"] = "transport"
+            trans_meta["sample_n"] = i
 
-                all_expr.append(pd.DataFrame(trans, columns=datamodule.adata.var_names))
-                all_meta.append(trans_meta)
+            all_expr.append(pd.DataFrame(trans, columns=datamodule.adata.var_names))
+            all_meta.append(trans_meta)
 
     all_expr = pd.concat(all_expr).reset_index(drop=True)
     all_meta = pd.concat(all_meta).reset_index(drop=True)
