@@ -305,6 +305,7 @@ class ConditionalPerturbationNetwork(ModelBase):
     dim_hidden: Sequence[int] = None
     dim_data: int = None
     dim_cond: int = None
+    dim_cond_map: int = None
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
 
