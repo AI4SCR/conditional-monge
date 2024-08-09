@@ -315,7 +315,7 @@ class ConditionalPerturbationNetwork(ModelBase):
 
         sc = nn.Dense(1, use_bias=True)
         dose_embedding = self.act_fn(sc(c))
-        m = nn.Dense(self.dim_cond, use_bias=True)
+        m = nn.Dense(self.dim_cond_map, use_bias=True)
         drug_embedding = self.act_fn(m(drug_embedding))
 
         z = jnp.concatenate((x, drug_embedding, dose_embedding), axis=1)
