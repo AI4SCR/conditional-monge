@@ -308,6 +308,7 @@ class ConditionalPerturbationNetwork(ModelBase):
     dim_cond_map: int = None
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
+    layer_norm: bool = False
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:  # noqa: D102
@@ -320,6 +321,10 @@ class ConditionalPerturbationNetwork(ModelBase):
         drug_embedding = self.act_fn(m(drug_embedding))
 
         z = jnp.concatenate((x, drug_embedding, dose_embedding), axis=1)
+
+        if self.layer_norm:
+            n = nn.LayerNorm()
+            z = n(z)
 
         for n_hidden in self.dim_hidden:
             wx = nn.Dense(n_hidden, use_bias=True)
