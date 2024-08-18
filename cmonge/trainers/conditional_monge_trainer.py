@@ -119,6 +119,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
         for step in tbar:
             is_logging_step = step % 100 == 0
+            is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
             train_batch = self.generate_batch(datamodule, "train")
             valid_batch = (
                 None
@@ -133,6 +134,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 train_batch=train_batch,
                 valid_batch=valid_batch,
                 is_logging_step=is_logging_step,
+                is_gradient_acc_step=is_gradient_acc_step,
             )
 
             if is_logging_step:
@@ -169,7 +171,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
             return val_tot_loss, loss_logs
 
-        @functools.partial(jax.jit, static_argnums=5)
+        @functools.partial(jax.jit, static_argnums=[5, 6])
         def step_fn(
             state_neural_net: train_state.TrainState,
             grads: frozen_dict.FrozenDict,
@@ -177,6 +179,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
             train_batch: Dict[str, jnp.ndarray],
             valid_batch: Optional[Dict[str, jnp.ndarray]] = None,
             is_logging_step: bool = False,
+            is_gradient_acc_step: bool = False,
         ) -> Tuple[train_state.TrainState, frozen_dict.FrozenDict, Dict[str, float]]:
             """Step function."""
             # compute loss and gradients
@@ -198,7 +201,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 current_logs["eval"] = current_eval_logs
 
             # update state
-            if (step + 1) % self.grad_acc_steps == 0:
+            if is_gradient_acc_step:
                 state_neural_net = state_neural_net.apply_gradients(
                     grads=tree_map(lambda g: g / self.grad_acc_steps, grads)
                 )
