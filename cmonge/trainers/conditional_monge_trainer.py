@@ -130,7 +130,6 @@ class ConditionalMongeTrainer(AbstractTrainer):
             self.state_neural_net, grads, current_logs = self.step_fn(
                 self.state_neural_net,
                 grads=grads,
-                step=step,
                 train_batch=train_batch,
                 valid_batch=valid_batch,
                 is_logging_step=is_logging_step,
@@ -171,11 +170,10 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
             return val_tot_loss, loss_logs
 
-        @functools.partial(jax.jit, static_argnums=[5, 6])
+        @functools.partial(jax.jit, static_argnums=[4, 5])
         def step_fn(
             state_neural_net: train_state.TrainState,
             grads: frozen_dict.FrozenDict,
-            step: int,
             train_batch: Dict[str, jnp.ndarray],
             valid_batch: Optional[Dict[str, jnp.ndarray]] = None,
             is_logging_step: bool = False,
