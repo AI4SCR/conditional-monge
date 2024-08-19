@@ -11,6 +11,7 @@ from dotmap import DotMap
 from flax.core import frozen_dict
 from flax.training import train_state
 from flax.training.orbax_utils import save_args_from_target
+from jax.tree_util import tree_map
 from loguru import logger
 from orbax.checkpoint import PyTreeCheckpointer
 
@@ -41,6 +42,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.key = jax.random.PRNGKey(self.config.seed)
         self.regularizer_strength = 1
         self.num_train_iters = self.config.num_train_iters
+        self.grad_acc_steps = self.config.optim.get("grad_acc_steps", 1)
 
         self.init_model(datamodule=datamodule)
 
@@ -117,8 +119,10 @@ class ConditionalMongeTrainer(AbstractTrainer):
             tbar = range(self.num_train_iters)
 
         train_conditions = []
+        grads = tree_map(jnp.zeros_like, self.state_neural_net.params)
         for step in tbar:
             is_logging_step = step % 100 == 0
+            is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
             train_batch, condition = self.generate_batch(datamodule, "train")
             valid_batch, _ = (
                 (None, None)
@@ -126,8 +130,13 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 else self.generate_batch(datamodule, "valid")
             )
 
-            self.state_neural_net, current_logs = self.step_fn(
-                self.state_neural_net, train_batch, valid_batch, is_logging_step
+            self.state_neural_net, grads, current_logs = self.step_fn(
+                self.state_neural_net,
+                grads=grads,
+                train_batch=train_batch,
+                valid_batch=valid_batch,
+                is_logging_step=is_logging_step,
+                is_gradient_acc_step=is_gradient_acc_step,
             )
             train_conditions.append(condition)
 
@@ -166,19 +175,23 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
             return val_tot_loss, loss_logs
 
-        @functools.partial(jax.jit, static_argnums=3)
+        @functools.partial(jax.jit, static_argnums=[4, 5])
         def step_fn(
             state_neural_net: train_state.TrainState,
+            grads: frozen_dict.FrozenDict,
             train_batch: Dict[str, jnp.ndarray],
             valid_batch: Optional[Dict[str, jnp.ndarray]] = None,
             is_logging_step: bool = False,
-        ) -> Tuple[train_state.TrainState, Dict[str, float]]:
+            is_gradient_acc_step: bool = False,
+        ) -> Tuple[train_state.TrainState, frozen_dict.FrozenDict, Dict[str, float]]:
             """Step function."""
             # compute loss and gradients
             grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
-            (_, current_train_logs), grads = grad_fn(
+            (_, current_train_logs), step_grads = grad_fn(
                 state_neural_net.params, state_neural_net.apply_fn, train_batch
             )
+            # Accumulate gradients
+            grads = tree_map(lambda g, step_g: g + step_g, grads, step_grads)
 
             # logging step
             current_logs = {"train": current_train_logs, "eval": {}}
@@ -191,7 +204,14 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 current_logs["eval"] = current_eval_logs
 
             # update state
-            return state_neural_net.apply_gradients(grads=grads), current_logs
+            if is_gradient_acc_step:
+                state_neural_net = state_neural_net.apply_gradients(
+                    grads=tree_map(lambda g: g / self.grad_acc_steps, grads)
+                )
+                # Reset gradients
+                grads = tree_map(jnp.zeros_like, grads)
+
+            return state_neural_net, grads, current_logs
 
         return step_fn
 

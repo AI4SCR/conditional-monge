@@ -23,7 +23,7 @@ pytest
 
 ## Data
 
-The preprocessed version of the Sciplex3 and 4i datasets can be downloaded [here](https://polybox.ethz.ch/index.php/s/RAykIMfDl0qCJaM).
+The preprocessed version of the Sciplex3 and 4i datasets can be downloaded [here](https://www.research-collection.ethz.ch/handle/20.500.11850/609681).
 
 
 ## Example usage
