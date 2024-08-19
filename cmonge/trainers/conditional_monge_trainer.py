@@ -83,11 +83,14 @@ class ConditionalMongeTrainer(AbstractTrainer):
         condition = datamodule.sample_condition(split_type)
         loader_source, loader_target = condition_to_loaders[condition]
         embeddings = self.embedding_module(condition)
-        return {
-            "source": next(loader_source),
-            "target": next(loader_target),
-            "condition": embeddings,
-        }
+        return (
+            {
+                "source": next(loader_source),
+                "target": next(loader_target),
+                "condition": embeddings,
+            },
+            condition,
+        )
 
     def update_logs(self, current_logs, logs, tbar):
         # store and print metrics if logging step
@@ -115,14 +118,14 @@ class ConditionalMongeTrainer(AbstractTrainer):
         except ImportError:
             tbar = range(self.num_train_iters)
 
+        train_conditions = []
         grads = tree_map(jnp.zeros_like, self.state_neural_net.params)
-
         for step in tbar:
             is_logging_step = step % 100 == 0
             is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
-            train_batch = self.generate_batch(datamodule, "train")
-            valid_batch = (
-                None
+            train_batch, condition = self.generate_batch(datamodule, "train")
+            valid_batch, _ = (
+                (None, None)
                 if not is_logging_step
                 else self.generate_batch(datamodule, "valid")
             )
@@ -135,10 +138,12 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 is_logging_step=is_logging_step,
                 is_gradient_acc_step=is_gradient_acc_step,
             )
+            train_conditions.append(condition)
 
             if is_logging_step:
                 self.update_logs(current_logs, logs, tbar)
         self.metrics["ott-logs"] = logs
+        self.metrics["train_conditions"] = train_conditions
 
         return self.state_neural_net, logs
 
