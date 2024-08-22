@@ -3,10 +3,11 @@ from typing import Dict, Iterator, Optional, Tuple
 import jax
 import jax.numpy as jnp
 import scanpy as sc
-from cmonge.datasets.single_loader import AbstractDataModule, DataModuleFactory
-from cmonge.trainers.ae_trainer import AETrainerModule
 from dotmap import DotMap
 from loguru import logger
+
+from cmonge.datasets.single_loader import AbstractDataModule, DataModuleFactory
+from cmonge.trainers.ae_trainer import AETrainerModule
 
 
 class ConditionalDataModule:

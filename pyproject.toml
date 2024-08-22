@@ -8,7 +8,6 @@ readme = "README.md"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "*"
-mypy = "*"
 pytest = "*"
 pre-commit = "*"
 
@@ -31,6 +30,11 @@ scanpy = "^1.9.8"
 chex = "^0.1.85"
 rdkit = "^2023.9.5"
 jax = "0.4.20"
+isort = "^5.13.2"
+black = "^24.4.2"
+ruff = "^0.5.4"
+types-pyyaml = "^6.0.12.20240311"
+scipy = "1.12.0"
 
 [[tool.poetry.source]]
 name = "jax"
@@ -40,7 +44,7 @@ priority = "primary"
 
 [[tool.poetry.source]]
 name = "PyPI"
-priority = "default"
+priority = "primary"
 
 [build-system]
 requires = ["poetry-core"]
@@ -48,4 +52,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 120
-
+lint.select = ["N8"]

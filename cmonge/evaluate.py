@@ -1,6 +1,8 @@
 from typing import Any, Dict
 
 import jax.numpy as jnp
+from loguru import logger
+
 from cmonge.metrics import (
     average_r2,
     compute_scalar_mmd,
@@ -9,7 +11,6 @@ from cmonge.metrics import (
     sinkhorn_div,
     wasserstein_distance,
 )
-from loguru import logger
 
 
 def init_logger_dict(metrics: Dict[str, Any], drug) -> Dict[str, Any]:

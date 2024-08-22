@@ -4,16 +4,17 @@ from typing import Literal
 import jax
 import jax.numpy as jnp
 import optax
-from cmonge.datasets.conditional_loader import ConditionalDataModule
-from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
-from cmonge.models.nn import PICNN
-from cmonge.trainers.ot_trainer import AbstractTrainer
-from cmonge.utils import create_or_update_logfile
 from dotmap import DotMap
 from flax.core.scope import FrozenVariableDict
 from loguru import logger
 from ott.solvers.nn.conjugate_solvers import DEFAULT_CONJUGATE_SOLVER
 from ott.solvers.nn.models import ICNN
+
+from cmonge.datasets.conditional_loader import ConditionalDataModule
+from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
+from cmonge.models.nn import PICNN
+from cmonge.trainers.ot_trainer import AbstractTrainer
+from cmonge.utils import create_or_update_logfile
 
 
 class ConditionalTrainer(AbstractTrainer):
@@ -159,10 +160,10 @@ class ConditionalTrainer(AbstractTrainer):
             ).mean()
 
             # compute Wasserstein-2 distance
-            C = jnp.mean(jnp.sum(source**2, axis=-1)) + jnp.mean(
+            c = jnp.mean(jnp.sum(source**2, axis=-1)) + jnp.mean(
                 jnp.sum(target**2, axis=-1)
             )
-            W2_dist = C - 2.0 * (f_source.mean() + f_star_target.mean())
+            w2_dist = c - 2.0 * (f_source.mean() + f_star_target.mean())
 
             if not self.pos_weights:
                 penalty = self.beta * self._penalize_weights_icnn(
@@ -174,9 +175,9 @@ class ConditionalTrainer(AbstractTrainer):
                 penalty = 0
 
             if to_optimize == "f":
-                return loss_f, (W2_dist, loss_f, loss_g, penalty)
+                return loss_f, (w2_dist, loss_f, loss_g, penalty)
             if to_optimize == "g":
-                return loss_g, (W2_dist, loss_f, loss_g, penalty)
+                return loss_g, (w2_dist, loss_f, loss_g, penalty)
 
         @jax.jit
         def step_fn(state_f, state_g, batch):
@@ -184,7 +185,7 @@ class ConditionalTrainer(AbstractTrainer):
             grad_fn = jax.value_and_grad(loss_fn, argnums=[0, 1], has_aux=True)
             if train:
                 # compute loss and gradients
-                (_, (W2_dist, loss_f, loss_g, penalty)), (grads_f, grads_g) = grad_fn(
+                (_, (w2_dist, loss_f, loss_g, penalty)), (grads_f, grads_g) = grad_fn(
                     state_f.params,
                     state_g.params,
                     state_f.potential_value_fn,
@@ -196,7 +197,7 @@ class ConditionalTrainer(AbstractTrainer):
                 if to_optimize == "f":
                     return (
                         state_f.apply_gradients(grads=grads_f),
-                        W2_dist,
+                        w2_dist,
                         loss_f,
                         loss_g,
                         penalty,
@@ -204,7 +205,7 @@ class ConditionalTrainer(AbstractTrainer):
                 if to_optimize == "g":
                     return (
                         state_g.apply_gradients(grads=grads_g),
-                        W2_dist,
+                        w2_dist,
                         loss_f,
                         loss_g,
                         penalty,
@@ -212,7 +213,7 @@ class ConditionalTrainer(AbstractTrainer):
                 raise ValueError("Optimization target has been misspecified.")
 
             # compute loss and gradients
-            (_, (W2_dist, loss_f, loss_g, penalty)), _ = grad_fn(
+            (_, (w2_dist, loss_f, loss_g, penalty)), _ = grad_fn(
                 state_f.params,
                 state_g.params,
                 state_f.potential_value_fn,
@@ -221,7 +222,7 @@ class ConditionalTrainer(AbstractTrainer):
                 batch,
             )
 
-            return W2_dist, loss_f, loss_g, penalty
+            return w2_dist, loss_f, loss_g, penalty
 
         return step_fn
 

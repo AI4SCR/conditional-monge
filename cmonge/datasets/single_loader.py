@@ -8,13 +8,19 @@ import jax.numpy as jnp
 import numpy as np
 import scanpy as sc
 from anndata import AnnData
+<<<<<<< HEAD
 from math import isclose
 from cmonge.trainers.ae_trainer import AETrainerModule
 from cmonge.utils import load_config
+=======
+>>>>>>> main
 from dotmap import DotMap
 from jaxtyping import PRNGKeyArray
 from loguru import logger
 from sklearn.model_selection import train_test_split
+
+from cmonge.trainers.ae_trainer import AETrainerModule
+from cmonge.utils import load_config
 
 
 class AbstractDataModule:
@@ -169,94 +175,11 @@ class AbstractDataModule:
     def get_ae_iter(
         self, control: jnp.ndarray, target: jnp.ndarray
     ) -> Iterator[jnp.ndarray]:
-        X = np.vstack((control, target))
+        x = np.vstack((control, target))
         k1, self.key = jax.random.split(self.key, 2)
-        X = jax.random.permutation(k1, X)
-        loaders = self.batcher_iter(X, self.batch_size)
+        x = jax.random.permutation(k1, x)
+        loaders = self.batcher_iter(x, self.batch_size)
         return loaders
-
-
-# class SyntheticDosageModule(AbstractDataModule):
-#     def __init__(self, config: DotMap) -> None:
-#         super().__init__()
-#         self.setup(**config)
-
-#     def loader(self) -> Tuple[jnp.ndarray, jnp.ndarray]:
-#         """Generates synthetic singe cell data using the qondot package."""
-#         logger.info("Synthetic data generation started.")
-#         perturbation_type = "function"
-#         data = DosageDatasetGenerator(
-#             2,
-#             scpg_kwargs=self.config.scpg_kwargs,
-#             dosages=np.linspace(0, 1, 2),
-#             perturb=self.config.perturb,
-#             perturbation_type=perturbation_type,
-#             before_continuity={"Gaussian": {"mu": 0, "sigma": 0.2}},
-#             seed=self.seed,
-#         )
-#         data.simulate()
-#         self.x, self.y = data.data["before_states"][0], data.data["after_states"][0]
-#         logger.info("Synthetic data generation finished.")
-
-#     def preprocesser(self):
-#         logger.info("Preprocessing started.")
-#         self.x[np.isnan(self.x)] = 0
-#         self.y[np.isnan(self.y)] = 0
-#         self.x = sc.pp.log1p(self.x)
-#         self.y = sc.pp.log1p(self.y)
-#         dist = wasserstein_distance(self.x[: self.batch_size], self.y[: self.batch_size])
-#         logger.info(f"Wasserstein distance between source and target: {dist}")
-#         X = np.vstack((self.x, self.y))
-#         self.adata = ad.AnnData(X)
-#         self.adata.obs_names = [f"Cell_{i:d}" for i in range(self.config.scpg_kwargs.mu_kwargs.ncells * 2)]
-#         self.adata.var_names = [f"Gene_{i:d}" for i in range(self.config.scpg_kwargs.mu_kwargs.ngenes)]
-#         control = [self.control_condition for _ in range(self.config.scpg_kwargs.mu_kwargs.ncells)]
-#         target = [self.drug_condition for _ in range(self.config.scpg_kwargs.mu_kwargs.ncells)]
-#         drug_col = control + target
-#         self.adata.obs[self.drug_col] = drug_col
-#         logger.info("Preprocessing finiished.")
-
-#     def setup(
-#         self,
-#         name: str,
-#         split: list[float],
-#         ae: bool,
-#         config: Dict[str, Any],
-#         seed: int,
-#         batch_size: int,
-#         drug_col: str,
-#         drug_condition: str,
-#         control_condition: str,
-#         **kwargs,
-#     ) -> None:
-#         """Load preprocess and split dataset."""
-#         self.name = name
-#         self.split = split
-#         self.config = config
-#         self.seed = seed
-#         self.batch_size = batch_size
-#         self.ae = ae
-#         self.drug_col = drug_col
-#         self.drug_condition = drug_condition
-#         self.control_condition = control_condition
-
-#         self.key = jax.random.PRNGKey(self.seed)
-
-#         self.loader()
-#         self.preprocesser()
-#         self.splitter()
-
-#     def train_dataloaders(self) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
-#         """Convert training dataset into infinite iterators."""
-#         return self.get_loaders_by_type("train")
-
-#     def valid_dataloaders(self) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
-#         """Convert test dataset into infinite iterators."""
-#         return self.get_loaders_by_type("valid")
-
-#     def test_dataloaders(self) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
-#         """Convert test dataset into a batch iterator."""
-#         return self.get_loaders_by_type("test")
 
 
 def get_train_valid_test_split(x: jnp.ndarray, split: list[int], seeds=[0, 1]):

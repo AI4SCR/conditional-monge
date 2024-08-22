@@ -1,10 +1,11 @@
 from pathlib import Path
 
+from loguru import logger
+
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.trainers.ae_trainer import AETrainerModule
 from cmonge.trainers.conditional_monge_trainer import ConditionalMongeTrainer
 from cmonge.utils import load_config
-from loguru import logger
 
 
 def train_conditional_monge(
