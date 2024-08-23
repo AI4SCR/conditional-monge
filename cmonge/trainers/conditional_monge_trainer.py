@@ -55,11 +55,18 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
         # setup optimizer and scheduler
         opt_fn = optim_factory[self.config.optim.name]
-        lr_scheduler = optax.cosine_decay_schedule(
-            init_value=self.config.optim.lr,
-            decay_steps=self.num_train_iters,
-            alpha=1e-2,
-        )
+        if self.config.lr_scheduler.name.lower() == "cosine":
+            lr_scheduler = optax.cosine_decay_schedule(
+                init_value=self.config.optim.lr,
+                decay_steps=self.num_train_iters,
+                alpha=1e-2,
+            )
+        elif self.config.lr_scheduler.name.lower() == "linear":
+            lr_scheduler = optax.linear_onecycle_schedule(
+                transition_steps=self.num_train_iters,
+                peak_value=self.config.optim.lr,
+                **self.config.lr_scheduler.kwags,
+            )
         optimizer = opt_fn(learning_rate=lr_scheduler, **self.config.optim.kwargs)
 
         self.neural_net = ConditionalPerturbationNetwork(
