@@ -8,12 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import scanpy as sc
 from anndata import AnnData
-<<<<<<< HEAD
 from math import isclose
-from cmonge.trainers.ae_trainer import AETrainerModule
-from cmonge.utils import load_config
-=======
->>>>>>> main
 from dotmap import DotMap
 from jaxtyping import PRNGKeyArray
 from loguru import logger
