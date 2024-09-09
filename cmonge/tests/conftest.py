@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from cmonge.datasets.single_loader import SciPlexModule
 from cmonge.utils import load_config
 

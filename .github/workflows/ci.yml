@@ -20,6 +20,12 @@ jobs:
          pip install --upgrade pip
          pip install poetry
          poetry install -v
+      
+      - name: Run isort
+        run: poetry run isort --profile=black --check-only .
+
+      - name: Run black
+        run: poetry run black --check .
 
       - name: Check formatting
         run: |

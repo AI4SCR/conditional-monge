@@ -214,10 +214,10 @@ class ConditionalMLP(ModelBase):
         z = jnp.concatenate((x, c), axis=1)
 
         for n_hidden in self.dim_hidden:
-            Wx = nn.Dense(n_hidden, use_bias=True)
-            z = self.act_fn(Wx(z))
-        Wx = nn.Dense(n_input, use_bias=True)
-        z = x + Wx(z)
+            wx = nn.Dense(n_hidden, use_bias=True)
+            z = self.act_fn(wx(z))
+        wx = nn.Dense(n_input, use_bias=True)
+        z = x + wx(z)
         return z
 
     def create_train_state(
@@ -268,18 +268,18 @@ class DummyMLP(ModelBase):
 
         z = x
         for n_hidden in self.dim_hidden:
-            Wx = nn.Dense(n_hidden, use_bias=True)
-            z = self.act_fn(Wx(z))
+            wx = nn.Dense(n_hidden, use_bias=True)
+            z = self.act_fn(wx(z))
 
         if self.is_potential:
-            Wx = nn.Dense(1, use_bias=True)
-            z = Wx(z).squeeze(-1)
+            wx = nn.Dense(1, use_bias=True)
+            z = wx(z).squeeze(-1)
 
             quad_term = 0.5 * jax.vmap(jnp.dot)(x, x)
             z += quad_term
         else:
-            Wx = nn.Dense(n_input, use_bias=True)
-            z = x + Wx(z)
+            wx = nn.Dense(n_input, use_bias=True)
+            z = x + wx(z)
 
         return z.squeeze(0) if squeeze else z
 
@@ -307,38 +307,33 @@ class ConditionalPerturbationNetwork(ModelBase):
     dim_hidden: Sequence[int] = None
     dim_data: int = None
     dim_cond: int = None
+    dim_cond_map: int = None
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
+    layer_norm: bool = False
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:  # noqa: D102
         n_input = x.shape[-1]
         drug_embedding, _ = c[:, :-1], c[:, -1]
 
-        Sc = nn.Dense(1, use_bias=True)
-        dose_embedding = self.act_fn(Sc(c))
-        M = nn.Dense(self.dim_cond, use_bias=True)
-        drug_embedding = self.act_fn(M(drug_embedding))
+        sc = nn.Dense(1, use_bias=True)
+        dose_embedding = self.act_fn(sc(c))
+        m = nn.Dense(self.dim_cond_map, use_bias=True)
+        drug_embedding = self.act_fn(m(drug_embedding))
 
         z = jnp.concatenate((x, drug_embedding, dose_embedding), axis=1)
 
+        if self.layer_norm:
+            n = nn.LayerNorm()
+            z = n(z)
+
         for n_hidden in self.dim_hidden:
-            Wx = nn.Dense(n_hidden, use_bias=True)
-            z = self.act_fn(Wx(z))
-        Wx = nn.Dense(n_input, use_bias=True)
+            wx = nn.Dense(n_hidden, use_bias=True)
+            z = self.act_fn(wx(z))
+        wx = nn.Dense(n_input, use_bias=True)
 
-        return x + Wx(z)
-        # for n_hidden in self.dim_hidden:
-        #     Wx = nn.Dense(n_hidden, use_bias=True)
-        #     drug_embedding = self.act_fn(Wx(c))
-
-        # Sc = nn.Dense(1, use_bias=True)
-        # dose_embedding = Sc(c)
-
-        # M = nn.Dense(n_input, use_bias=True)
-        # drug_embedding = M(drug_embedding)
-
-        # return x + drug_embedding * dose_embedding
+        return x + wx(z)
 
     def create_train_state(
         self,
