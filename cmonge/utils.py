@@ -28,10 +28,10 @@ def monge_get_source_target_transport(
 ):
     if batch_size is None:
         batch_size = datamodule.batch_size
+
     if datamodule.split[2] > 0:
         print("Evaluating on test set")
         split_type = "test"
-
     elif datamodule.split[1] > 0:
         print("Evaluating on validation set")
         split_type = "valid"
@@ -114,6 +114,7 @@ def get_source_target_transport(
     target=True,
     source=True,
     transport=True,
+    max_sample: bool = False,
 ):
     if datamodule.data_config.split[2] > 0:
         print("Evaluating on test set")
@@ -125,57 +126,43 @@ def get_source_target_transport(
     else:
         print("Evaluating on training set")
         split_type = "train"
+
     all_expr = []
     all_meta = []
     for i in range(n_samples):
         for condition in conditions:
-            if condition == "NA-NA-NA":
-                continue
+
             dm = datamodule.loaders[condition]
             cond_embeddings = trainer.embedding_module(condition)
 
+            print(condition)
+
+            batch_size = datamodule.data_config.batch_size
+
             if split_type == "valid":
-                if (
-                    len(dm.target_valid_cells.tolist())
-                    >= datamodule.data_config.batch_size
-                ):
-                    print(condition)
-                    sel_target_cells = random.sample(
-                        dm.target_valid_cells.tolist(),
-                        datamodule.data_config.batch_size,
-                    )
-                    sel_control_cells = random.sample(
-                        dm.control_valid_cells.tolist(),
-                        datamodule.data_config.batch_size,
-                    )
-                else:
-                    continue
+                sel_target_cells = random.sample(
+                    dm.target_valid_cells.tolist(),
+                    batch_size,
+                )
+                sel_control_cells = random.sample(
+                    dm.control_valid_cells.tolist(),
+                    batch_size,
+                )
 
             elif split_type == "test":
-                if (
-                    len(dm.target_test_cells.tolist())
-                    >= datamodule.data_config.batch_size
-                ):
-                    sel_target_cells = random.sample(
-                        dm.target_test_cells.tolist(), datamodule.data_config.batch_size
-                    )
-                    sel_control_cells = random.sample(
-                        dm.control_test_cells.tolist(),
-                        datamodule.data_config.batch_size,
-                    )
+                sel_target_cells = random.sample(
+                    dm.target_test_cells.tolist(), batch_size
+                )
+                sel_control_cells = random.sample(
+                    dm.control_test_cells.tolist(), batch_size
+                )
             elif split_type == "train":
-                if (
-                    len(dm.target_train_cells.tolist())
-                    >= datamodule.data_config.batch_size
-                ):
-                    sel_target_cells = random.sample(
-                        dm.target_train_cells.tolist(),
-                        datamodule.data_config.batch_size,
-                    )
-                    sel_control_cells = random.sample(
-                        dm.control_train_cells.tolist(),
-                        datamodule.data_config.batch_size,
-                    )
+                sel_target_cells = random.sample(
+                    dm.target_train_cells.tolist(), batch_size
+                )
+                sel_control_cells = random.sample(
+                    dm.control_train_cells.tolist(), batch_size
+                )
 
             cond_expr = dm.adata[sel_target_cells].X
             cond_meta = dm.adata.obs.loc[sel_target_cells, :]
