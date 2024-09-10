@@ -452,6 +452,7 @@ embed_factory = {
     "esm_small_full_seq": CarEsmSmall,
     "esm_small_tail_dim": CarEsmSmall,
     "esm_small_tail_seq": CarEsmSmall,
+    "esm2_t33_650M_UR50D_tail_dim": CarEsmSmall,
     "esm2_t48_15B_UR50D_tail_dim": CarEsmSmall,
     "metadata": MetaDataEmbedding,
 }
