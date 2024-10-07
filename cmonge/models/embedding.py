@@ -192,10 +192,15 @@ class ModeOfActionEmbedding(BaseEmbedding):
             values = jnp.asarray(row.values.astype("float"))
             self.embeddings[index] = values
 
-    def __call__(self, condition: str):
-        cond, dose = condition.split("-")
-        condition = self.embeddings[condition]
-        condition = jnp.append(condition, np.log(int(dose)))
+    def __call__(self, condition: str, dose_split: bool = True):
+        if dose_split:
+            cond, dose = condition.split("-")
+            condition = self.embeddings[condition]
+            condition = (condition, jnp.asarray(np.log(int(dose))))
+
+        else:
+            condition = self.embeddings[condition]
+
         condition_batch = jnp.asarray([condition for _ in range(self.batch_size)])
         return condition_batch
 

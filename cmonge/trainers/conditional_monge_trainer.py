@@ -84,13 +84,13 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.state_neural_net = self.neural_net.create_train_state(rng, optimizer)
 
     def generate_batch(
-        self, datamodule: ConditionalDataModule, split_type: str
+        self, datamodule: ConditionalDataModule, split_type: str, split_dose: bool=True
     ) -> Dict[str, jnp.ndarray]:
         """Generate a batch of condition and samples."""
         condition_to_loaders = datamodule.get_loaders_by_type(split_type)
         condition = datamodule.sample_condition(split_type)
         loader_source, loader_target = condition_to_loaders[condition]
-        embeddings = self.embedding_module(condition)
+        embeddings = self.embedding_module(condition, split_dose)
         return (
             {
                 "source": next(loader_source),
@@ -131,11 +131,11 @@ class ConditionalMongeTrainer(AbstractTrainer):
         for step in tbar:
             is_logging_step = step % 100 == 0
             is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
-            train_batch, condition = self.generate_batch(datamodule, "train")
+            train_batch, condition = self.generate_batch(datamodule, "train", self.datamodule.data_config.split_dose)
             valid_batch, _ = (
                 (None, None)
                 if not is_logging_step
-                else self.generate_batch(datamodule, "valid")
+                else self.generate_batch(datamodule, "valid", self.datamodule.data_config.split_dose)
             )
 
             self.state_neural_net, grads, current_logs = self.step_fn(
@@ -268,7 +268,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
             self.metrics[split_type] = {}
             for cond, loader in cond_to_loaders.items():
                 logger.info(f"Evaluation started on {cond} {split_type}.")
-                cond_embedding = self.embedding_module(cond)
+                cond_embedding = self.embedding_module(cond, self.datamodule.data_config.split_dose)
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}
