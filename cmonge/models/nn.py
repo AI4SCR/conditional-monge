@@ -309,18 +309,36 @@ class ConditionalPerturbationNetwork(ModelBase):
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
+    embed_cond_equal: bool = False
+    non_drug_dim: int = 1  # Old sciplex drug-dose params
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:  # noqa: D102
         n_input = x.shape[-1]
-        drug_embedding, _ = c[:, :-1], c[:, -1]
 
-        sc = nn.Dense(1, use_bias=True)
-        dose_embedding = self.act_fn(sc(c))
         m = nn.Dense(self.dim_cond_map, use_bias=True)
-        drug_embedding = self.act_fn(m(drug_embedding))
+        if not self.embed_cond_equal:
+            sc = nn.Dense(self.non_drug_dim, use_bias=True)
+        for i, cond_embedding in enumerate(c):
+            if i == 0:
+                all_embeddings = jnp.expand_dims(self.act_fn(m(cond_embedding)), 0)
+            # To ensure old behaviour -- NOT TESTED
+            elif not self.embed_cond_equal and i > 0:
+                non_drug_embedding = self.act_fn(sc(cond_embedding))
+                # This will likely fail and concat axis not checked
+                all_embeddings = jnp.concatenate(
+                    (all_embeddings, non_drug_embedding), axis=0
+                )
+            else:
+                embed = jnp.expand_dims(self.act_fn(m(cond_embedding)), 0)
+                all_embeddings = jnp.concatenate((all_embeddings, embed), axis=0)
 
-        z = jnp.concatenate((x, drug_embedding, dose_embedding), axis=1)
+        if self.embed_cond_equal:
+            condition_embedding = jnp.average(all_embeddings, axis=1)
+        else:
+            # Not sure if right dims here
+            condition_embedding = all_embeddings
+        z = jnp.concatenate((x, condition_embedding), axis=1)
 
         if self.layer_norm:
             n = nn.LayerNorm()
@@ -340,8 +358,8 @@ class ConditionalPerturbationNetwork(ModelBase):
         **kwargs: Any,
     ) -> NeuralTrainState:
         """Create initial `TrainState`."""
-        c = jnp.ones((1, self.dim_cond))
-        x = jnp.ones((1, self.dim_data))
+        c = jnp.ones((1, 1, self.dim_cond))  # (n_batch, n_embedding, embed_dim)
+        x = jnp.ones((1, self.dim_data))  # (n_batch, data_dim)
         params = self.init(rng, x=x, c=c)["params"]
         return NeuralTrainState.create(
             apply_fn=self.apply,
