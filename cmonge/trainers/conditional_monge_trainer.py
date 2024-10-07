@@ -147,7 +147,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
             valid_batch, _ = (
                 ({"num_contexts": None}, None)
                 if not is_logging_step
-                else self.generate_batch(datamodule, "valid")
+                else self.generate_batch(
+                    datamodule, "valid", self.datamodule.data_config.split_dose
+                )
             )
 
             self.state_neural_net, grads, current_logs = self.step_fn(
@@ -293,22 +295,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
             self.metrics[split_type] = {}
             for cond, loader in cond_to_loaders.items():
                 logger.info(f"Evaluation started on {cond} {split_type}.")
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
                 cond_embedding, n_contexts = self.embedding_module(cond)
-=======
-                cond_embedding = self.embedding_module(cond, self.datamodule.data_config.split_dose)
->>>>>>> c24d78e (Adapt cmonge for conditional 4i experiments:)
-=======
-                cond_embedding = self.embedding_module(
-                    cond, self.datamodule.data_config.split_dose
-=======
-                cond_embedding, n_contexts = self.embedding_module(
-                    cond, self.split_dose
->>>>>>> 5c1b8a0 (Perturbation MLP two settings, sciplex and equal context embedding. Equal context embedding taken num_contexts per batch)
-                )
->>>>>>> 2d35a30 (chore: blackening)
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}

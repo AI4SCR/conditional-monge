@@ -406,3 +406,9 @@ class FourIModule(AbstractDataModule):
         else:
             self.encoder = lambda x: x
             self.decoder = lambda x: x
+
+
+DataModuleFactory = {
+    "4i": FourIModule,
+    "sciplex": SciPlexModule,
+}  # , "synthetic": SyntheticDosageModule}
