@@ -311,6 +311,7 @@ class ConditionalPerturbationNetwork(BasePotential):
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
+<<<<<<< HEAD
     embed_cond_equal: bool = (
         False  # Whether all context variables should be treated as set or not
     )
@@ -318,6 +319,10 @@ class ConditionalPerturbationNetwork(BasePotential):
         (0, 10),
         (0, 11),
     )  # Start/stop index per modality
+=======
+    embed_cond_equal: bool = False
+    non_drug_dim: int = 1  # Old sciplex drug-dose params
+>>>>>>> 6d9ce75 (Generalisation of PerturbationMLP attempt 1)
 
     @nn.compact
     def __call__(
@@ -401,7 +406,11 @@ class ConditionalPerturbationNetwork(BasePotential):
         **kwargs: Any,
     ) -> PotentialTrainState:
         """Create initial `TrainState`."""
+<<<<<<< HEAD
         c = jnp.ones((1, self.dim_cond))  # (n_batch, embed_dim)
+=======
+        c = jnp.ones((1, 1, self.dim_cond))  # (n_batch, n_embedding, embed_dim)
+>>>>>>> 6d9ce75 (Generalisation of PerturbationMLP attempt 1)
         x = jnp.ones((1, self.dim_data))  # (n_batch, data_dim)
         params = self.init(rng, x=x, c=c)["params"]
         return PotentialTrainState.create(
