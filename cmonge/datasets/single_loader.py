@@ -324,7 +324,6 @@ class FourIModule(AbstractDataModule):
             self.adata = self.parent
         else:
             self.adata = sc.read_h5ad(self.file_path)
-
         with open(self.features_path) as f:
             features = f.readlines()
         self.features = [feature.rstrip() for feature in features]
