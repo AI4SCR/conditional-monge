@@ -8,6 +8,7 @@ from joblib import Parallel, delayed
 from loguru import logger
 from sklearn import manifold
 from tqdm import tqdm
+from typing import List
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.metrics import wasserstein_distance
