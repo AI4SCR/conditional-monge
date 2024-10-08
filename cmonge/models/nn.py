@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 from typing import Any, Callable, Iterable, Sequence, Tuple, Union
-=======
-from typing import Any, Callable, List, Sequence, Tuple, Union
->>>>>>> 82aad0c (feat: Flexible number of modalities for context)
 
 import flax.linen as nn
 import jax
