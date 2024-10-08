@@ -379,8 +379,8 @@ class ConditionalPerturbationNetwork(BasePotential):
         contexts = [c[:, e[0] : e[1]] for e in self.context_entity_bonds]
         if not self.embed_cond_equal:
             # Each context is processed by a different layer, good for combining modalities
-            assert (
-                len(self.context_entity_bonds) == len(self.dim_cond_maps)
+            assert len(self.context_entity_bonds) == len(
+                self.dim_cond_maps
             ), f"Length of context entity bonds and context map sizes has to match: {self.context_entity_bonds} != {self.dim_cond_maps}"
 
             layers = [
