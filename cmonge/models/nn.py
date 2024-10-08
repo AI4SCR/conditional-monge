@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 from typing import Any, Callable, Iterable, Sequence, Tuple, Union
+=======
+from typing import Any, Callable, List, Sequence, Tuple, Union
+>>>>>>> 82aad0c (feat: Flexible number of modalities for context)
 
 import flax.linen as nn
 import jax
@@ -321,6 +325,7 @@ class ConditionalPerturbationNetwork(ModelBase):
     )  # Start/stop index per modality
 =======
     embed_cond_equal: bool = False
+<<<<<<< HEAD
     non_drug_dim: int = 1  # Old sciplex drug-dose params
 >>>>>>> 6d9ce75 (Generalisation of PerturbationMLP attempt 1)
 
@@ -333,12 +338,23 @@ class ConditionalPerturbationNetwork(ModelBase):
             x (jnp.ndarray): The input data of shape bs x dim_data
             c (jnp.ndarray): The context of shape bs x dim_cond with
                 possibly different modalities
+=======
+    context_entity_bonds: List[Tuple[int, int]] = None  # Start/stop index per modality
+
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:  # noqa: D102
+        """
+        Args:
+            x (jnp.ndarray): The input data of shape bs x dim_data
+            c (jnp.ndarray): The context of shape bs x dim_cond with possibly different modalities
+>>>>>>> 82aad0c (feat: Flexible number of modalities for context)
                 concatenated, as can be specified via context_entity_bonds.
 
         Returns:
             jnp.ndarray: _description_
         """
         n_input = x.shape[-1]
+<<<<<<< HEAD
 
         # Chunk the inputs
         contexts = [
@@ -358,6 +374,37 @@ class ConditionalPerturbationNetwork(ModelBase):
                 dim_cond_map = [self.dim_cond_map]
         else:
             dim_cond_map = self.dim_cond_map
+=======
+        # Chunk the inputs
+        contexts = [c[:, e[0] : e[1]] for e in self.context_entity_bonds]
+        if not self.embed_cond_equal:
+            # Each context is processed by a different layer, good for combining modalities
+            assert (
+                len(self.context_entity_bonds) == len(self.dim_cond_maps)
+            ), f"Length of context entity bonds and context map sizes has to match: {self.context_entity_bonds} != {self.dim_cond_maps}"
+
+            layers = [
+                nn.Dense(self.dim_cond_maps[i], use_bias=True)
+                for i in range(len(contexts))
+            ]
+            embeddings = [
+                self.act_fn(layers[i](context)) for i, context in enumerate(contexts)
+            ]
+            z = jnp.concatenate((x, *embeddings), axis=1)
+        else:
+            # We can process arbitrary number of contexts, all from the same modality,
+            # via a permutation-invariant deep set layer.
+
+            sizes = [c.shape[-1] for c in contexts]
+            if not len(set([])) == 1:
+                raise ValueError(
+                    f"For embedding a set, all contexts need same length, not {sizes}"
+                )
+            layer = nn.Dense(self.dim_cond_maps[0], use_bias=True)
+            embeddings = [self.act_fn(layer(context)) for context in contexts]
+            # Average along stacked dimension (alternatives like summing are possible)
+            z = jnp.mean(jnp.stack((x, *embeddings)), axis=0)
+>>>>>>> 82aad0c (feat: Flexible number of modalities for context)
 
         if not self.embed_cond_equal:
             # Each context is processed by a different layer,
