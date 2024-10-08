@@ -45,7 +45,7 @@ class RDKitEmbedding(BaseEmbedding):
         name: str,
         model_dir: str,
         datamodule: ConditionalDataModule,  # For compatability
-        drugs: List = [
+        drug_list: List = [
             "abexinostat",
             "belinostat",
             "dacinostat",
@@ -86,7 +86,7 @@ class RDKitEmbedding(BaseEmbedding):
             # load smile representation of drugs
             drugs = pd.read_csv(self.drug_to_smile_path)
             drugs["drug"] = drugs["drug"].apply(lambda x: x.lower())
-            drugs = drugs[drugs["drug"].isin(drugs)][["drug", "smile"]]
+            drugs = drugs[drugs["drug"].isin(drug_list)][["drug", "smile"]]
 
             df = pd.DataFrame(
                 data=embedding,
