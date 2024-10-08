@@ -7,6 +7,7 @@ from joblib import Parallel, delayed
 from loguru import logger
 from sklearn import manifold
 from tqdm import tqdm
+from typing import List
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.metrics import wasserstein_distance
@@ -44,6 +45,17 @@ class RDKitEmbedding(BaseEmbedding):
         name: str,
         model_dir: str,
         datamodule: ConditionalDataModule,  # For compatability
+        drugs: List = [
+            "abexinostat",
+            "belinostat",
+            "dacinostat",
+            "entinostat",
+            "givinostat",
+            "mocetinostat",
+            "pracinostat",
+            "tacedinaline",
+            "trametinib",
+        ],
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.smile_path = Path(smile_path)
@@ -74,21 +86,7 @@ class RDKitEmbedding(BaseEmbedding):
             # load smile representation of drugs
             drugs = pd.read_csv(self.drug_to_smile_path)
             drugs["drug"] = drugs["drug"].apply(lambda x: x.lower())
-            drugs = drugs[
-                drugs["drug"].isin(
-                    [
-                        "abexinostat",
-                        "belinostat",
-                        "dacinostat",
-                        "entinostat",
-                        "givinostat",
-                        "mocetinostat",
-                        "pracinostat",
-                        "tacedinaline",
-                        "trametinib",
-                    ]
-                )
-            ][["drug", "smile"]]
+            drugs = drugs[drugs["drug"].isin(drugs)][["drug", "smile"]]
 
             df = pd.DataFrame(
                 data=embedding,
