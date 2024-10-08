@@ -365,11 +365,10 @@ class ConditionalPerturbationNetwork(BasePotential):
             embeddings = [
                 self.act_fn(layers[i](context)) for i, context in enumerate(contexts)
             ]
-            cond_embedding = jnp.concatenate(embeddings, axis=1)
+
         else:
             # We can process arbitrary number of contexts, all from the same modality,
             # via a permutation-invariant deep set layer.
-
             sizes = [c.shape[-1] for c in contexts]
             if not len(set(sizes)) == 1:
                 raise ValueError(
@@ -378,7 +377,9 @@ class ConditionalPerturbationNetwork(BasePotential):
             layer = nn.Dense(self.dim_cond_maps[0], use_bias=True)
             embeddings = [self.act_fn(layer(context)) for context in contexts]
             # Average along stacked dimension (alternatives like summing are possible)
-            z = jnp.mean(jnp.stack((x, *embeddings)), axis=0)
+            embeddings = [jnp.mean(jnp.stack(*embeddings), axis=0)]
+
+        z = jnp.concatenate((x, *embeddings), axis=1)
 
         if self.layer_norm:
             n = nn.LayerNorm()
