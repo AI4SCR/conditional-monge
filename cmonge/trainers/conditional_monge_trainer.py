@@ -142,11 +142,15 @@ class ConditionalMongeTrainer(AbstractTrainer):
         for step in tbar:
             is_logging_step = step % 100 == 0
             is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
-            train_batch, condition = self.generate_batch(datamodule, "train", self.datamodule.data_config.split_dose)
+            train_batch, condition = self.generate_batch(
+                datamodule, "train", self.datamodule.data_config.split_dose
+            )
             valid_batch, _ = (
                 ({"num_contexts": None}, None)
                 if not is_logging_step
-                else self.generate_batch(datamodule, "valid", self.datamodule.data_config.split_dose)
+                else self.generate_batch(
+                    datamodule, "valid", self.datamodule.data_config.split_dose
+                )
             )
 
             self.state_neural_net, grads, current_logs = self.step_fn(
@@ -293,10 +297,16 @@ class ConditionalMongeTrainer(AbstractTrainer):
             for cond, loader in cond_to_loaders.items():
                 logger.info(f"Evaluation started on {cond} {split_type}.")
 <<<<<<< HEAD
+<<<<<<< HEAD
                 cond_embedding, n_contexts = self.embedding_module(cond)
 =======
                 cond_embedding = self.embedding_module(cond, self.datamodule.data_config.split_dose)
 >>>>>>> c24d78e (Adapt cmonge for conditional 4i experiments:)
+=======
+                cond_embedding = self.embedding_module(
+                    cond, self.datamodule.data_config.split_dose
+                )
+>>>>>>> 2d35a30 (chore: blackening)
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}
