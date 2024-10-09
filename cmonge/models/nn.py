@@ -15,6 +15,8 @@ from ott.neural.networks.potentials import (
     PotentialValueFn_t,
 )
 
+from loguru import logger
+
 
 class PICNN(ICNN):
     """Partial Input convex neural network (PICNN) architecture."""
@@ -317,7 +319,6 @@ class ConditionalPerturbationNetwork(BasePotential):
         (0, 10),
         (0, 11),
     )  # Start/stop index per modality
-    dim_cond_map: int = 50  # Depreciated, for backwards compatibility
 
     @nn.compact
     def __call__(
@@ -400,7 +401,7 @@ class ConditionalPerturbationNetwork(BasePotential):
         **kwargs: Any,
     ) -> PotentialTrainState:
         """Create initial `TrainState`."""
-        c = jnp.ones((1, 1, self.dim_cond))  # (n_batch, n_embedding, embed_dim)
+        c = jnp.ones((1, self.dim_cond))  # (n_batch, n_embedding, embed_dim)
         x = jnp.ones((1, self.dim_data))  # (n_batch, data_dim)
         params = self.init(rng, x=x, c=c)["params"]
         return PotentialTrainState.create(

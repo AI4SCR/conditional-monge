@@ -147,9 +147,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
             valid_batch, _ = (
                 ({"num_contexts": None}, None)
                 if not is_logging_step
-                else self.generate_batch(
-                    datamodule, "valid", self.datamodule.data_config.split_dose
-                )
+                else self.generate_batch(datamodule, "valid")
             )
 
             self.state_neural_net, grads, current_logs = self.step_fn(
