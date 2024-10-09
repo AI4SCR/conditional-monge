@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Sequence, Tuple, Union
+from typing import Any, Callable, Iterable, Sequence, Tuple, Union
 
 import flax.linen as nn
 import jax
@@ -14,6 +14,8 @@ from ott.solvers.nn.models import (
     PotentialGradientFn_t,
     PotentialValueFn_t,
 )
+
+from loguru import logger
 
 
 class PICNN(ICNN):
@@ -306,15 +308,20 @@ class ConditionalPerturbationNetwork(ModelBase):
     dim_data: int = None
     dim_cond: int = None  # Full dimension of all context variables concatenated
     # Same length as context_entity_bonds if embed_cond_equal is False (if True, first item is size of deep set layer, rest is ignored)
-    dim_cond_maps: List[int] = None
+    dim_cond_maps: Iterable[int] = (10, 1)
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
     embed_cond_equal: bool = False
-    context_entity_bonds: List[Tuple[int, int]] = None  # Start/stop index per modality
+    context_entity_bonds: Iterable[Tuple[int, int]] = (
+        (0, 10),
+        (0, 11),
+    )  # Start/stop index per modality
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:  # noqa: D102
+    def __call__(
+        self, x: jnp.ndarray, c: jnp.ndarray, num_contexts: int = 2
+    ) -> jnp.ndarray:  # noqa: D102
         """
         Args:
             x (jnp.ndarray): The input data of shape bs x dim_data
@@ -326,7 +333,11 @@ class ConditionalPerturbationNetwork(ModelBase):
         """
         n_input = x.shape[-1]
         # Chunk the inputs
-        contexts = [c[:, e[0] : e[1]] for e in self.context_entity_bonds]
+        contexts = [
+            c[:, e[0] : e[1]]
+            for i, e in enumerate(self.context_entity_bonds)
+            if i < num_contexts
+        ]
         if not self.embed_cond_equal:
             # Each context is processed by a different layer, good for combining modalities
             assert len(self.context_entity_bonds) == len(
@@ -340,21 +351,22 @@ class ConditionalPerturbationNetwork(ModelBase):
             embeddings = [
                 self.act_fn(layers[i](context)) for i, context in enumerate(contexts)
             ]
-            z = jnp.concatenate((x, *embeddings), axis=1)
+            cond_embedding = jnp.concatenate(embeddings, axis=1)
         else:
             # We can process arbitrary number of contexts, all from the same modality,
             # via a permutation-invariant deep set layer.
 
             sizes = [c.shape[-1] for c in contexts]
-            if not len(set([])) == 1:
+            if not len(set(sizes)) == 1:
                 raise ValueError(
                     f"For embedding a set, all contexts need same length, not {sizes}"
                 )
             layer = nn.Dense(self.dim_cond_maps[0], use_bias=True)
             embeddings = [self.act_fn(layer(context)) for context in contexts]
             # Average along stacked dimension (alternatives like summing are possible)
-            z = jnp.mean(jnp.stack((x, *embeddings)), axis=0)
+            cond_embedding = jnp.mean(jnp.stack(embeddings), axis=0)
 
+        z = jnp.concatenate((x, cond_embedding), axis=1)
         if self.layer_norm:
             n = nn.LayerNorm()
             z = n(z)
@@ -373,7 +385,7 @@ class ConditionalPerturbationNetwork(ModelBase):
         **kwargs: Any,
     ) -> NeuralTrainState:
         """Create initial `TrainState`."""
-        c = jnp.ones((1, 1, self.dim_cond))  # (n_batch, n_embedding, embed_dim)
+        c = jnp.ones((1, self.dim_cond))  # (n_batch, n_embedding, embed_dim)
         x = jnp.ones((1, self.dim_data))  # (n_batch, data_dim)
         params = self.init(rng, x=x, c=c)["params"]
         return NeuralTrainState.create(
