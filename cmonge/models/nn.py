@@ -355,7 +355,6 @@ class ConditionalPerturbationNetwork(ModelBase):
         else:
             # We can process arbitrary number of contexts, all from the same modality,
             # via a permutation-invariant deep set layer.
-
             sizes = [c.shape[-1] for c in contexts]
             if not len(set(sizes)) == 1:
                 raise ValueError(
