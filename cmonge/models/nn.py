@@ -16,6 +16,8 @@ from ott.solvers.nn.models import (
     PotentialValueFn_t,
 )
 
+from loguru import logger
+
 
 class PICNN(ICNN):
     """Partial Input convex neural network (PICNN) architecture."""
