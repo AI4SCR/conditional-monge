@@ -308,7 +308,7 @@ class ConditionalPerturbationNetwork(BasePotential):
     dim_data: int = None
     dim_cond: int = None  # Full dimension of all context variables concatenated
     # Same length as context_entity_bonds if embed_cond_equal is False (if True, first item is size of deep set layer, rest is ignored)
-    dim_cond_maps: List[int] = None
+    dim_cond_maps: Iterable[int] = (50, 1)
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
@@ -319,6 +319,16 @@ class ConditionalPerturbationNetwork(BasePotential):
         (0, 10),
         (0, 11),
     )  # Start/stop index per modality
+    dim_cond_map: int = 50  # Depreciated, for backwards compatibility
+
+    @nn.compact
+    def __call__(
+        self, x: jnp.ndarray, c: jnp.ndarray, num_contexts: int = 2
+    ) -> jnp.ndarray:  # noqa: D102
+        """
+        Args:
+            x (jnp.ndarray): The input data of shape bs x dim_data
+            c (jnp.ndarray): The context of shape bs x dim_cond with possibly different modalities
                 concatenated, as can be specified via context_entity_bonds.
 
         Returns:
