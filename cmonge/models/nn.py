@@ -319,6 +319,7 @@ class ConditionalPerturbationNetwork(BasePotential):
         (0, 10),
         (0, 11),
     )  # Start/stop index per modality
+    dim_cond_map: int = 50  # Depreciated, for backwards compatibility
 
     @nn.compact
     def __call__(
