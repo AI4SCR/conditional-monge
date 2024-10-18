@@ -13,6 +13,7 @@ from jaxtyping import PRNGKeyArray
 from loguru import logger
 from sklearn.model_selection import train_test_split
 
+from cmonge.datasets.chemCPA_loaders import SciPlexCPAModule
 from cmonge.trainers.ae_trainer import AETrainerModule
 from cmonge.utils import load_config
 
@@ -411,4 +412,5 @@ class FourIModule(AbstractDataModule):
 DataModuleFactory = {
     "4i": FourIModule,
     "sciplex": SciPlexModule,
+    "cpa_sciplex": SciPlexCPAModule,
 }  # , "synthetic": SyntheticDosageModule}

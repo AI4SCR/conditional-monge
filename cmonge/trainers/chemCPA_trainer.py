@@ -307,7 +307,6 @@ class ComPertTrainer(AbstractTrainer):
             )
 
             (cov_pred, drug_pred), batch_stats = outs if train else (outs, None)
-
             adv_drug_loss = self.loss_adversary_drugs(
                 labels=batch["target_didx"], probs=drug_pred
             )
