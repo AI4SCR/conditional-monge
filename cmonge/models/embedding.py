@@ -130,13 +130,17 @@ class RDKitEmbedding(BaseEmbedding):
             cond, dose = condition.split("-")
             condition = self.embeddings[cond]
             condition = jnp.append(condition, np.log(int(dose)))
+            n_contexts = 2
         else:
             sub_conditions = condition.split("_")
+            n_contexts = len(sub_conditions)
             sub_conditions = [self.embeddings[c] for c in sub_conditions]
             if len(sub_conditions) > 1:
                 condition = jnp.concatenate(sub_conditions)
             else:
                 condition = sub_conditions[0]
+        condition_batch = jnp.asarray([condition for _ in range(self.batch_size)])
+        return condition_batch, n_contexts
 
 
 class ModeOfActionEmbedding(BaseEmbedding):
