@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import List
 
 import jax.numpy as jnp
 import numpy as np
@@ -7,7 +8,6 @@ from joblib import Parallel, delayed
 from loguru import logger
 from sklearn import manifold
 from tqdm import tqdm
-from typing import List
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.metrics import wasserstein_distance

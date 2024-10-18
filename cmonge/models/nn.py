@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import optax
 from flax.core import frozen_dict
 from jax.nn import initializers
+from loguru import logger
 from ott.solvers.nn.layers import PosDefPotentials
 from ott.solvers.nn.models import (
     ICNN,
@@ -14,8 +15,6 @@ from ott.solvers.nn.models import (
     PotentialGradientFn_t,
     PotentialValueFn_t,
 )
-
-from loguru import logger
 
 
 class PICNN(ICNN):
