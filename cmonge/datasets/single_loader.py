@@ -13,6 +13,7 @@ from jaxtyping import PRNGKeyArray
 from loguru import logger
 from sklearn.model_selection import train_test_split
 
+from cmonge.datasets.chemCPA_loaders import SciPlexCPAModule
 from cmonge.trainers.ae_trainer import AETrainerModule
 from cmonge.utils import load_config
 
@@ -129,7 +130,8 @@ class AbstractDataModule:
     def get_loaders_by_type(
         self, split_type: str, batch_size: Optional[int] = None
     ) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
-        """Convert adata object into control and target iterators, subset based on the split type (train/valid/test)."""
+        """Convert adata object into control and target iterators,
+        subset based on the split type (train/valid/test)."""
         if split_type == "train":
             control_cells = self.control_train_cells
             target_cells = self.target_train_cells
@@ -410,4 +412,5 @@ class FourIModule(AbstractDataModule):
 DataModuleFactory = {
     "4i": FourIModule,
     "sciplex": SciPlexModule,
+    "cpa_sciplex": SciPlexCPAModule,
 }  # , "synthetic": SyntheticDosageModule}
