@@ -333,7 +333,6 @@ class ConditionalPerturbationNetwork(BasePotential):
             jnp.ndarray: _description_
         """
         n_input = x.shape[-1]
-<<<<<<< HEAD
 
         # Chunk the inputs
         contexts = [
@@ -353,27 +352,22 @@ class ConditionalPerturbationNetwork(BasePotential):
                 dim_cond_map = [self.dim_cond_map]
         else:
             dim_cond_map = self.dim_cond_map
-=======
-        # Chunk the inputs
-        contexts = [
-            c[:, e[0] : e[1]]
-            for i, e in enumerate(self.context_entity_bonds)
-            if i < num_contexts
-        ]
+
         if not self.embed_cond_equal:
-            # Each context is processed by a different layer, good for combining modalities
-            assert len(self.context_entity_bonds) == len(
-                self.dim_cond_maps
-            ), f"Length of context entity bonds and context map sizes has to match: {self.context_entity_bonds} != {self.dim_cond_maps}"
+            # Each context is processed by a different layer,
+            # good for combining modalities
+            assert len(self.context_entity_bonds) == len(dim_cond_map), (
+                f"Length of context entity bonds and context map sizes has to match: "
+                f"{self.context_entity_bonds} != {dim_cond_map}"
+            )
 
             layers = [
-                nn.Dense(self.dim_cond_maps[i], use_bias=True)
-                for i in range(len(contexts))
+                nn.Dense(dim_cond_map[i], use_bias=True) for i in range(len(contexts))
             ]
             embeddings = [
                 self.act_fn(layers[i](context)) for i, context in enumerate(contexts)
             ]
-
+            cond_embedding = jnp.concatenate(embeddings, axis=1)
         else:
             # We can process arbitrary number of contexts, all from the same modality,
             # via a permutation-invariant deep set layer.
@@ -382,13 +376,12 @@ class ConditionalPerturbationNetwork(BasePotential):
                 raise ValueError(
                     f"For embedding a set, all contexts need same length, not {sizes}"
                 )
-            layer = nn.Dense(self.dim_cond_maps[0], use_bias=True)
+            layer = nn.Dense(dim_cond_map[0], use_bias=True)
             embeddings = [self.act_fn(layer(context)) for context in contexts]
             # Average along stacked dimension (alternatives like summing are possible)
-            embeddings = [jnp.mean(jnp.stack(*embeddings), axis=0)]
+            cond_embedding = jnp.mean(jnp.stack(embeddings), axis=0)
 
-        z = jnp.concatenate((x, *embeddings), axis=1)
-
+        z = jnp.concatenate((x, cond_embedding), axis=1)
         if self.layer_norm:
             n = nn.LayerNorm()
             z = n(z)
