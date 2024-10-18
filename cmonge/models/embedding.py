@@ -126,7 +126,6 @@ class RDKitEmbedding(BaseEmbedding):
 
     def __call__(self, condition: str, dose_split: bool = True):
         if dose_split:
-            logger.info("Splitting drug and dose")
             cond, dose = condition.split("-")
             condition = self.embeddings[cond]
             condition = jnp.append(condition, np.log(int(dose)))
