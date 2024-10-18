@@ -13,6 +13,7 @@ from jaxtyping import PRNGKeyArray
 from loguru import logger
 from sklearn.model_selection import train_test_split
 
+from cmonge.datasets.chemCPA_loaders import SciPlexCPAModule
 from cmonge.trainers.ae_trainer import AETrainerModule
 from cmonge.utils import load_config
 
@@ -129,7 +130,8 @@ class AbstractDataModule:
     def get_loaders_by_type(
         self, split_type: str, batch_size: Optional[int] = None
     ) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
-        """Convert adata object into control and target iterators, subset based on the split type (train/valid/test)."""
+        """Convert adata object into control and target iterators,
+        subset based on the split type (train/valid/test)."""
         if split_type == "train":
             control_cells = self.control_train_cells
             target_cells = self.target_train_cells
@@ -320,7 +322,11 @@ class FourIModule(AbstractDataModule):
         self.setup(**config)
 
     def loader(self) -> None:
-        self.adata = sc.read_h5ad(self.file_path)
+        if self.parent:
+            self.adata = self.parent
+        else:
+            self.adata = sc.read_h5ad(self.file_path)
+
         with open(self.features_path) as f:
             features = f.readlines()
         self.features = [feature.rstrip() for feature in features]
@@ -346,6 +352,10 @@ class FourIModule(AbstractDataModule):
         control_condition: str,
         ae: bool,
         seed: int,
+        split_dose: bool = False,
+        parent: Optional[AnnData] = None,
+        reduction: Optional[str] = None,  # For compatability
+        parent_reducer: Optional[str] = None,  # For compatability
     ) -> None:
         self.name = name
         self.file_path = file_path
@@ -358,7 +368,9 @@ class FourIModule(AbstractDataModule):
         self.control_condition = control_condition
         self.ae = ae
         self.key = jax.random.PRNGKey(seed)
-
+        self.parent = parent
+        self.reduction = reduction
+        self.parent_reducer = parent_reducer
         self.loader()
         self.preprocesser()
         self.splitter()
@@ -377,8 +389,29 @@ class FourIModule(AbstractDataModule):
         test_loaders = self.get_loaders_by_type("test", batch_size)
         return test_loaders
 
+    # For compatability with the ConditionalDataloader
+    def reducer(self):
+        """Sets up dimensionality reduction, either with PCA, AE or identity."""
+        if self.reduction == "pca":
+            self.pca_means = self.adata.X.mean(axis=0)
+            self.encoder = lambda x: (x - self.pca_means) @ self.adata.varm["PCs"]
+            self.decoder = lambda x: x @ self.adata.varm["PCs"].T + self.pca_means
+        elif self.reduction == "ae":
+            if self.parent_reducer:
+                trainer = self.parent_reducer
+            else:
+                trainer = AETrainerModule(self.ae_config)
+                trainer.load_model(self.name, self.drug_condition)
+            model = trainer.model.bind({"params": trainer.state.params})
+            self.encoder = lambda x: model.encoder(x)
+            self.decoder = lambda x: model.decoder(x)
+        else:
+            self.encoder = lambda x: x
+            self.decoder = lambda x: x
+
 
 DataModuleFactory = {
     "4i": FourIModule,
     "sciplex": SciPlexModule,
+    "cpa_sciplex": SciPlexCPAModule,
 }  # , "synthetic": SyntheticDosageModule}

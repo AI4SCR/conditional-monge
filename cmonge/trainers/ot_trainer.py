@@ -3,6 +3,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Dict
 
+import jax
 import jax.numpy as jnp
 import optax
 from dotmap import DotMap
@@ -268,5 +269,27 @@ class NeuralDualTrainer(AbstractTrainer):
         raise NotImplementedError
 
 
-loss_factory = {"sinkhorn": fitting_loss}
+def gaussian_loss(pred: jnp.ndarray, target: jnp.ndarray, var: jnp.ndarray, eps=1e-5):
+
+    var = jnp.clip(var, eps, None)
+    term1 = jnp.log(var)
+    term2 = jax.lax.integer_pow((pred - target), 2) / var
+    final = (term1 + term2) / 2
+
+    return final.mean()
+
+
+def cross_entropy(labels: jnp.ndarray, probs: jnp.ndarray):
+    """
+    Cross Entropy loss.
+    """
+
+    return optax.softmax_cross_entropy_with_integer_labels(probs, labels).mean()
+
+
+loss_factory = {
+    "sinkhorn": fitting_loss,
+    "gaussian": gaussian_loss,
+    "crossentropy": cross_entropy,
+}
 regularizer_factory = {"monge": regularizer}

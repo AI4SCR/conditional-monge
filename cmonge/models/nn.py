@@ -1,4 +1,4 @@
-from typing import Any, Callable, Sequence, Tuple, Union
+from typing import Any, Callable, Iterable, Sequence, Tuple, Union
 
 import flax.linen as nn
 import jax
@@ -17,7 +17,7 @@ from ott.solvers.nn.models import (
 
 
 class PICNN(ICNN):
-    """partial Input convex neural network (PICNN) architecture."""
+    """Partial Input convex neural network (PICNN) architecture."""
 
     dim_data: int = None
     dim_hidden: Sequence[int] = None
@@ -304,24 +304,67 @@ class DummyMLP(ModelBase):
 class ConditionalPerturbationNetwork(ModelBase):
     dim_hidden: Sequence[int] = None
     dim_data: int = None
-    dim_cond: int = None
-    dim_cond_map: int = None
+    dim_cond: int = None  # Full dimension of all context variables concatenated
+    # Same length as context_entity_bonds if embed_cond_equal is False (if True, first item is size of deep set layer, rest is ignored)
+    dim_cond_maps: Iterable[int] = (50, 1)
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
+    embed_cond_equal: bool = False
+    context_entity_bonds: Iterable[Tuple[int, int]] = (
+        (0, 10),
+        (0, 11),
+    )  # Start/stop index per modality
+    dim_cond_map: int = 50  # Depreciated, for backwards compatibility
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:  # noqa: D102
+    def __call__(
+        self, x: jnp.ndarray, c: jnp.ndarray, num_contexts: int = 2
+    ) -> jnp.ndarray:  # noqa: D102
+        """
+        Args:
+            x (jnp.ndarray): The input data of shape bs x dim_data
+            c (jnp.ndarray): The context of shape bs x dim_cond with possibly different modalities
+                concatenated, as can be specified via context_entity_bonds.
+
+        Returns:
+            jnp.ndarray: _description_
+        """
         n_input = x.shape[-1]
-        drug_embedding, _ = c[:, :-1], c[:, -1]
+        # Chunk the inputs
+        contexts = [
+            c[:, e[0] : e[1]]
+            for i, e in enumerate(self.context_entity_bonds)
+            if i < num_contexts
+        ]
+        if not self.embed_cond_equal:
+            # Each context is processed by a different layer, good for combining modalities
+            assert len(self.context_entity_bonds) == len(
+                self.dim_cond_maps
+            ), f"Length of context entity bonds and context map sizes has to match: {self.context_entity_bonds} != {self.dim_cond_maps}"
 
-        sc = nn.Dense(1, use_bias=True)
-        dose_embedding = self.act_fn(sc(c))
-        m = nn.Dense(self.dim_cond_map, use_bias=True)
-        drug_embedding = self.act_fn(m(drug_embedding))
+            layers = [
+                nn.Dense(self.dim_cond_maps[i], use_bias=True)
+                for i in range(len(contexts))
+            ]
+            embeddings = [
+                self.act_fn(layers[i](context)) for i, context in enumerate(contexts)
+            ]
+            cond_embedding = jnp.concatenate(embeddings, axis=1)
+        else:
+            # We can process arbitrary number of contexts, all from the same modality,
+            # via a permutation-invariant deep set layer.
+            sizes = [c.shape[-1] for c in contexts]
+            if not len(set(sizes)) == 1:
+                raise ValueError(
+                    f"For embedding a set, all contexts need same length, not {sizes}"
+                )
+            layer = nn.Dense(self.dim_cond_maps[0], use_bias=True)
+            embeddings = [self.act_fn(layer(context)) for context in contexts]
+            # Average along stacked dimension (alternatives like summing are possible)
+            cond_embedding = jnp.mean(jnp.stack(embeddings), axis=0)
 
-        z = jnp.concatenate((x, drug_embedding, dose_embedding), axis=1)
-
+        z = jnp.concatenate((x, cond_embedding), axis=1)
         if self.layer_norm:
             n = nn.LayerNorm()
             z = n(z)
@@ -340,8 +383,8 @@ class ConditionalPerturbationNetwork(ModelBase):
         **kwargs: Any,
     ) -> NeuralTrainState:
         """Create initial `TrainState`."""
-        c = jnp.ones((1, self.dim_cond))
-        x = jnp.ones((1, self.dim_data))
+        c = jnp.ones((1, self.dim_cond))  # (n_batch, n_embedding, embed_dim)
+        x = jnp.ones((1, self.dim_data))  # (n_batch, data_dim)
         params = self.init(rng, x=x, c=c)["params"]
         return NeuralTrainState.create(
             apply_fn=self.apply,
