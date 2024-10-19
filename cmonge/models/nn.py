@@ -311,7 +311,7 @@ class ConditionalPerturbationNetwork(ModelBase):
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
-    embed_cond_equal: bool = False
+    embed_cond_equal: bool = False  # Whether all context variables should be treated as set or not
     context_entity_bonds: Iterable[Tuple[int, int]] = (
         (0, 10),
         (0, 11),
