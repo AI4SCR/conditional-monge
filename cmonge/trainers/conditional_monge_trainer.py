@@ -44,6 +44,8 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.num_train_iters = self.config.num_train_iters
         self.grad_acc_steps = self.config.optim.get("grad_acc_steps", 1)
 
+        self.dose_split = self.config.embedding.get("dose_split", True)
+
         self.init_model(datamodule=datamodule)
 
     def init_model(self, datamodule: ConditionalDataModule):
@@ -84,18 +86,23 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.state_neural_net = self.neural_net.create_train_state(rng, optimizer)
 
     def generate_batch(
-        self, datamodule: ConditionalDataModule, split_type: str
+        self,
+        datamodule: ConditionalDataModule,
+        split_type: str,
     ) -> Dict[str, jnp.ndarray]:
         """Generate a batch of condition and samples."""
         condition_to_loaders = datamodule.get_loaders_by_type(split_type)
         condition = datamodule.sample_condition(split_type)
         loader_source, loader_target = condition_to_loaders[condition]
-        embeddings = self.embedding_module(condition)
+        embeddings, n_contexts = self.embedding_module(
+            condition=condition, dose_split=self.dose_split
+        )
         return (
             {
                 "source": next(loader_source),
                 "target": next(loader_target),
                 "condition": embeddings,
+                "num_contexts": n_contexts,
             },
             condition,
         )
@@ -132,8 +139,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
             is_logging_step = step % 100 == 0
             is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
             train_batch, condition = self.generate_batch(datamodule, "train")
+
             valid_batch, _ = (
-                (None, None)
+                ({"num_contexts": None}, None)
                 if not is_logging_step
                 else self.generate_batch(datamodule, "valid")
             )
@@ -145,6 +153,8 @@ class ConditionalMongeTrainer(AbstractTrainer):
                 valid_batch=valid_batch,
                 is_logging_step=is_logging_step,
                 is_gradient_acc_step=is_gradient_acc_step,
+                n_train_contexts=train_batch["num_contexts"],
+                n_valid_contexts=valid_batch["num_contexts"],
             )
             train_conditions.append(condition)
 
@@ -162,11 +172,15 @@ class ConditionalMongeTrainer(AbstractTrainer):
             params: frozen_dict.FrozenDict,
             apply_fn: Callable,
             batch: Dict[str, jnp.ndarray],
+            n_contexts: int,
         ) -> Tuple[float, Dict[str, float]]:
             """Loss function."""
             # map samples with the fitted map
             mapped_samples = apply_fn(
-                {"params": params}, batch["source"], batch["condition"]
+                {"params": params},
+                batch["source"],
+                batch["condition"],
+                n_contexts,
             )
 
             # compute the loss
@@ -183,7 +197,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
             return val_tot_loss, loss_logs
 
-        @functools.partial(jax.jit, static_argnums=[4, 5])
+        @functools.partial(jax.jit, static_argnums=[4, 5, 6, 7])
         def step_fn(
             state_neural_net: train_state.TrainState,
             grads: frozen_dict.FrozenDict,
@@ -191,12 +205,17 @@ class ConditionalMongeTrainer(AbstractTrainer):
             valid_batch: Optional[Dict[str, jnp.ndarray]] = None,
             is_logging_step: bool = False,
             is_gradient_acc_step: bool = False,
+            n_train_contexts: int = 2,
+            n_valid_contexts: int = 2,
         ) -> Tuple[train_state.TrainState, frozen_dict.FrozenDict, Dict[str, float]]:
             """Step function."""
             # compute loss and gradients
             grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
             (_, current_train_logs), step_grads = grad_fn(
-                state_neural_net.params, state_neural_net.apply_fn, train_batch
+                state_neural_net.params,
+                state_neural_net.apply_fn,
+                train_batch,
+                n_train_contexts,
             )
             # Accumulate gradients
             grads = tree_map(lambda g, step_g: g + step_g, grads, step_grads)
@@ -208,6 +227,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
                     params=state_neural_net.params,
                     apply_fn=state_neural_net.apply_fn,
                     batch=valid_batch,
+                    n_contexts=n_valid_contexts,
                 )
                 current_logs["eval"] = current_eval_logs
 
@@ -223,9 +243,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
         return step_fn
 
-    def transport(self, x, c):
+    def transport(self, x, c, num_contexts):
         return self.state_neural_net.apply_fn(
-            {"params": self.state_neural_net.params}, x, c
+            {"params": self.state_neural_net.params}, x, c, num_contexts
         )
 
     def evaluate(
@@ -241,10 +261,11 @@ class ConditionalMongeTrainer(AbstractTrainer):
             loader_target: Iterator[jnp.ndarray],
             cond_embeddings: jnp.ndarray,
             metrics: str,
+            n_contexts,
         ):
             for enum, (source, target) in enumerate(zip(loader_source, loader_target)):
                 if not identity:
-                    transport = self.transport(source, cond_embeddings)
+                    transport = self.transport(source, cond_embeddings, n_contexts)
                 else:
                     transport = source
 
@@ -268,7 +289,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
             self.metrics[split_type] = {}
             for cond, loader in cond_to_loaders.items():
                 logger.info(f"Evaluation started on {cond} {split_type}.")
-                cond_embedding = self.embedding_module(cond)
+                cond_embedding, n_contexts = self.embedding_module(
+                    cond, self.dose_split
+                )
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}
@@ -280,6 +303,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
                     loader_target,
                     cond_embedding,
                     self.metrics[split_type][cond],
+                    n_contexts,
                 )
                 log_mean_metrics(self.metrics[split_type][cond])
 

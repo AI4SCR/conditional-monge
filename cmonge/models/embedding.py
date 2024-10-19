@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import List
 
 import jax.numpy as jnp
 import numpy as np
@@ -44,6 +45,17 @@ class RDKitEmbedding(BaseEmbedding):
         name: str,
         model_dir: str,
         datamodule: ConditionalDataModule,  # For compatability
+        drug_list: List = [
+            "abexinostat",
+            "belinostat",
+            "dacinostat",
+            "entinostat",
+            "givinostat",
+            "mocetinostat",
+            "pracinostat",
+            "tacedinaline",
+            "trametinib",
+        ],
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.smile_path = Path(smile_path)
@@ -74,21 +86,7 @@ class RDKitEmbedding(BaseEmbedding):
             # load smile representation of drugs
             drugs = pd.read_csv(self.drug_to_smile_path)
             drugs["drug"] = drugs["drug"].apply(lambda x: x.lower())
-            drugs = drugs[
-                drugs["drug"].isin(
-                    [
-                        "abexinostat",
-                        "belinostat",
-                        "dacinostat",
-                        "entinostat",
-                        "givinostat",
-                        "mocetinostat",
-                        "pracinostat",
-                        "tacedinaline",
-                        "trametinib",
-                    ]
-                )
-            ][["drug", "smile"]]
+            drugs = drugs[drugs["drug"].isin(drug_list)][["drug", "smile"]]
 
             df = pd.DataFrame(
                 data=embedding,
@@ -126,12 +124,22 @@ class RDKitEmbedding(BaseEmbedding):
             values = jnp.asarray(row[filter_col].values.astype("float"))
             self.embeddings[name] = values
 
-    def __call__(self, condition: str):
-        cond, dose = condition.split("-")
-        condition = self.embeddings[cond]
-        condition = jnp.append(condition, np.log(int(dose)))
+    def __call__(self, condition: str, dose_split: bool = True):
+        if dose_split:
+            cond, dose = condition.split("-")
+            condition = self.embeddings[cond]
+            condition = jnp.append(condition, np.log(int(dose)))
+            n_contexts = 2
+        else:
+            sub_conditions = condition.split("_")
+            n_contexts = len(sub_conditions)
+            sub_conditions = [self.embeddings[c] for c in sub_conditions]
+            if len(sub_conditions) > 1:
+                condition = jnp.concatenate(sub_conditions)
+            else:
+                condition = sub_conditions[0]
         condition_batch = jnp.asarray([condition for _ in range(self.batch_size)])
-        return condition_batch
+        return condition_batch, n_contexts
 
 
 class ModeOfActionEmbedding(BaseEmbedding):
@@ -192,12 +200,29 @@ class ModeOfActionEmbedding(BaseEmbedding):
             values = jnp.asarray(row.values.astype("float"))
             self.embeddings[index] = values
 
-    def __call__(self, condition: str):
-        cond, dose = condition.split("-")
-        condition = self.embeddings[condition]
-        condition = jnp.append(condition, np.log(int(dose)))
+    def __call__(self, condition: str, dose_split: bool = True):
+        if dose_split:
+            cond, dose = condition.split("-")
+            condition = self.embeddings[condition]
+            condition = jnp.append(condition, np.log(int(dose)))
+            n_contexts = 2
+        else:
+            sub_conditions = condition.split("_")
+            n_contexts = len(sub_conditions)
+            enc_sub_conditions = []
+            for c in sub_conditions:
+                try:
+                    enc_sub_conditions.append(self.embeddings[c])
+                except KeyError:
+                    # For the MoA embedding drugs that don't occur as
+                    # single perturbation in the dataset are skipped
+                    n_contexts -= 1
+            if len(sub_conditions) > 1:
+                condition = jnp.concatenate(enc_sub_conditions)
+            else:
+                condition = enc_sub_conditions[0]
         condition_batch = jnp.asarray([condition for _ in range(self.batch_size)])
-        return condition_batch
+        return condition_batch, n_contexts
 
 
 embed_factory = {
