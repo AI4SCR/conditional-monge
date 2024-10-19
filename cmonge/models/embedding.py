@@ -149,7 +149,6 @@ class ModeOfActionEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
-        split_dose: bool = True,
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
