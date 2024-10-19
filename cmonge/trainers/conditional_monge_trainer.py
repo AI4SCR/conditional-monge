@@ -44,7 +44,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.num_train_iters = self.config.num_train_iters
         self.grad_acc_steps = self.config.optim.get("grad_acc_steps", 1)
 
-        self.split_dose = self.config.embedding.get("split_dose", True)
+        self.dose_split = self.config.embedding.get("dose_split", True)
 
         self.init_model(datamodule=datamodule)
 
@@ -95,7 +95,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         condition = datamodule.sample_condition(split_type)
         loader_source, loader_target = condition_to_loaders[condition]
         embeddings, n_contexts = self.embedding_module(
-            condition=condition, dose_split=self.split_dose
+            condition=condition, dose_split=self.dose_split
         )
         return (
             {
@@ -290,7 +290,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
             for cond, loader in cond_to_loaders.items():
                 logger.info(f"Evaluation started on {cond} {split_type}.")
                 cond_embedding, n_contexts = self.embedding_module(
-                    cond, self.split_dose
+                    cond, self.dose_split
                 )
                 loader_source, loader_target = loader
 

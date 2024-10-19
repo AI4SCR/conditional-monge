@@ -149,7 +149,6 @@ class ModeOfActionEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
-        split_dose: bool = True,
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
@@ -210,11 +209,18 @@ class ModeOfActionEmbedding(BaseEmbedding):
         else:
             sub_conditions = condition.split("_")
             n_contexts = len(sub_conditions)
-            sub_conditions = [self.embeddings[c] for c in sub_conditions]
+            enc_sub_conditions = []
+            for c in sub_conditions:
+                try:
+                    enc_sub_conditions.append(self.embeddings[c])
+                except KeyError:
+                    # For the MoA embedding drugs that don't occur as
+                    # single perturbation in the dataset are skipped
+                    n_contexts -= 1
             if len(sub_conditions) > 1:
-                condition = jnp.concatenate(sub_conditions)
+                condition = jnp.concatenate(enc_sub_conditions)
             else:
-                condition = sub_conditions[0]
+                condition = enc_sub_conditions[0]
         condition_batch = jnp.asarray([condition for _ in range(self.batch_size)])
         return condition_batch, n_contexts
 
