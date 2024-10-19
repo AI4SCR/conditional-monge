@@ -307,7 +307,7 @@ class ConditionalPerturbationNetwork(ModelBase):
     dim_data: int = None
     dim_cond: int = None  # Full dimension of all context variables concatenated
     # Same length as context_entity_bonds if embed_cond_equal is False (if True, first item is size of deep set layer, rest is ignored)
-    dim_cond_map: Iterable[int] = [50]
+    dim_cond_map: Iterable[int] = (50,)
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
