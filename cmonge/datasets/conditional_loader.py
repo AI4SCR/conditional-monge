@@ -6,7 +6,8 @@ import scanpy as sc
 from dotmap import DotMap
 from loguru import logger
 
-from cmonge.datasets.single_loader import AbstractDataModule, DataModuleFactory
+from cmonge.datasets.single_loader import AbstractDataModule
+from cmonge.datasets import DataModuleFactory
 from cmonge.trainers.ae_trainer import AETrainerModule
 
 
