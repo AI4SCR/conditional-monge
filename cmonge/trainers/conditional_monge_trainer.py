@@ -17,7 +17,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
-from cmonge.models.embedding import embed_factory
+from cmonge.models.embedding import EmbeddingFactory
 from cmonge.models.nn import ConditionalPerturbationNetwork
 from cmonge.trainers.ot_trainer import (
     AbstractTrainer,
@@ -28,6 +28,8 @@ from cmonge.utils import create_or_update_logfile, optim_factory
 
 
 class ConditionalMongeTrainer(AbstractTrainer):
+    embedding_factory: Dict[str] = EmbeddingFactory
+
     def __init__(
         self,
         jobid: int,
@@ -76,7 +78,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
             **self.config.mlp
         )  # TODO: create embedding and model factory
 
-        embed_module = embed_factory[self.config.embedding.name]
+        embed_module = self.embedding_factory[self.config.embedding.name]
         self.embedding_module = embed_module(
             datamodule=datamodule, **self.config.embedding
         )
