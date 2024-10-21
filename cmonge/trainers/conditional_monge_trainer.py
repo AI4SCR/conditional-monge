@@ -17,7 +17,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
-from cmonge.models.embedding import EmbeddingFactory, BaseEmbedding
+from cmonge.models.embedding import BaseEmbedding, EmbeddingFactory
 from cmonge.models.nn import ConditionalPerturbationNetwork
 from cmonge.trainers.ot_trainer import (
     AbstractTrainer,
