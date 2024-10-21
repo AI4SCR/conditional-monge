@@ -18,6 +18,8 @@ class ConditionalDataModule:
     homogeneous - Train on all conditions but keep out some data from every condition for testing.
     """
 
+    datamodule_factory: Dict[str, AbstractDataModule] = DataModuleFactory
+
     def __init__(
         self,
         data_config: DotMap,
@@ -35,7 +37,7 @@ class ConditionalDataModule:
             self.drug_condition = data_config.drug_condition
         self.batch_size = self.data_config.batch_size
         self.key = jax.random.PRNGKey(data_config.seed)
-        self.meta_loader = DataModuleFactory[data_config.name]
+        self.meta_loader = self.datamodule_factory[data_config.name]
         self.loaders: Dict[str, AbstractDataModule] = {}
 
         # Instead of loading the AnnData object from disk for every loader

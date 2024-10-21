@@ -225,7 +225,7 @@ class ModeOfActionEmbedding(BaseEmbedding):
         return condition_batch, n_contexts
 
 
-embed_factory = {
+EmbeddingFactory = {
     "rdkit": RDKitEmbedding,
     "dose": DoseEmbedding,
     "moa": ModeOfActionEmbedding,
