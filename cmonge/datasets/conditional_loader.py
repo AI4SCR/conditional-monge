@@ -18,7 +18,7 @@ class ConditionalDataModule:
     homogeneous - Train on all conditions but keep out some data from every condition for testing.
     """
 
-    datamodule_factory: Dict[str] = DataModuleFactory
+    datamodule_factory: Dict[str, AbstractDataModule] = DataModuleFactory
 
     def __init__(
         self,
