@@ -17,7 +17,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
-from cmonge.model.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA
+from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA
 from cmonge.models.embedding import embed_factory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
 from cmonge.utils import create_or_update_logfile, optim_factory
@@ -246,11 +246,7 @@ class ComPertTrainer(AbstractTrainer):
                 "adv_drug_loss": adv_drug_loss,
                 "adv_cov_loss": adv_cov_loss,
             }
-            if train:
-                jax.debug.print("total_ae_loss {x}", x=tot_loss)
-                jax.debug.print("reconstruction_loss {x}", x=reconstruction_loss)
-                jax.debug.print("adv_drug_loss {x}", x=adv_drug_loss)
-                jax.debug.print("adv_cov_loss {x}", x=adv_cov_loss)
+
             return tot_loss, (loss_logs, batch_stats)
 
         def adv_loss_fn(
@@ -287,12 +283,6 @@ class ComPertTrainer(AbstractTrainer):
                 + self.config.penalty_adversary * adv_drugs_grad_penalty
                 + self.config.penalty_adversary * adv_cov_grad_penalty
             )
-            if train:
-                jax.debug.print("adv_cov_grad_penalty {x}", x=adv_cov_grad_penalty)
-                jax.debug.print("adv_drugs_grad_penalty {x}", x=adv_drugs_grad_penalty)
-                jax.debug.print("tot_adv_loss {x}", x=tot_loss)
-                jax.debug.print("adv_drug_loss {x}", x=adv_drug_loss)
-                jax.debug.print("adv_cov_loss {x}", x=adv_cov_loss)
 
             # store training logs
             loss_logs = {
