@@ -1,9 +1,28 @@
 [tool.poetry]
 name = "cmonge"
-version = "1.0.0"
+version = "0.0.1"
 description = "Extension of the Monge Gap to learn conditional optimal transport maps"
-authors = ["Benedek Harsanyi <hben.0204@gmail.com>", "Jannis Born <jab@zurich.ibm.com>"]
+authors = ["Alice Driessen <adr@zurich.ibm.com>", "Benedek Harsanyi <hben.0204@gmail.com>", "Jannis Born <jab@zurich.ibm.com>"]
 readme = "README.md"
+keywords = [
+    "Machine Learning",
+    "Optimal Transport",
+    "Neural OT",
+    "Monge Gap",
+    "Conditional Distribution Learning"
+]
+homepage = "https://github.com/AI4SCR/conditional-monge"
+repository = "https://github.com/AI4SCR/conditional-monge"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
 
 
 [tool.poetry.group.dev.dependencies]
