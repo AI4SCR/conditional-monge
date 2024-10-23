@@ -65,6 +65,8 @@ class SciPlexCPAModule(SciPlexModule):
         self.splitter()
         self.reducer()
 
+
+
     def preprocesser(self) -> None:
         """Normalizes and log transofrms the data."""
         if not isinstance(self.adata.X, np.ndarray):

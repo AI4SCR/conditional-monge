@@ -206,7 +206,7 @@ class ModeOfActionEmbedding(BaseEmbedding):
 
     def __call__(self, condition: str, dose_split: bool = True):
         if dose_split:
-            cond, dose = condition.split("-")
+            dose = condition.split("-")[-1]
             condition = self.embeddings[condition]
             condition = jnp.append(condition, np.log(int(dose)))
             n_contexts = 2
