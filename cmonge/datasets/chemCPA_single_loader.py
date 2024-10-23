@@ -55,13 +55,17 @@ class SciPlexCPAModule(SciPlexModule):
         self.parent_celltype_to_idx = parent_celltype_to_idx
         self.parent_drug_to_idx = parent_drug_to_idx
         self.seed = seed
-        self.drug = self.drug_condition.split("-")[0]
         self.key = jax.random.PRNGKey(self.seed)
+
+        cond_split = self.drug_condition.split("-")
+        self.drug = "-".join(cond_split[:-1])
 
         self.loader()
         self.preprocesser()
         self.splitter()
         self.reducer()
+
+
 
     def preprocesser(self) -> None:
         """Normalizes and log transofrms the data."""
