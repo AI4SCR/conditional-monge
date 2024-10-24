@@ -179,7 +179,7 @@ class MongeMapTrainer(AbstractTrainer):
         """Transports a batch of data using the learned model."""
         return self.state.apply_fn({"params": self.state.params}, source)
 
-def save_checkpoint(self, path: Path = None, config: DotMap = None) -> None:
+    def save_checkpoint(self, path: Path = None, config: DotMap = None) -> None:
         if path is None and config is None:
             logger.error(
                 """Please provide a checkpoint save path
