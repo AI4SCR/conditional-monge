@@ -179,11 +179,50 @@ class MongeMapTrainer(AbstractTrainer):
         """Transports a batch of data using the learned model."""
         return self.state.apply_fn({"params": self.state.params}, source)
 
-    def save_checkpoint(self, path: Path) -> None:
-        raise NotImplementedError
+def save_checkpoint(self, path: Path = None, config: DotMap = None) -> None:
+        if path is None and config is None:
+            logger.error(
+                """Please provide a checkpoint save path
+            either directly or through the config"""
+            )
+        elif path is None:
+            path = config.checkpointing_path
 
-    def load_checkpoint(self, path: Path) -> None:
-        raise NotImplementedError
+        ckpt = self.solver.state_neural_net
+        checkpointer = PyTreeCheckpointer()
+        save_args = save_args_from_target(ckpt)
+        checkpointer.save(path, ckpt, save_args=save_args, force=True)
+
+    @classmethod
+    def load_checkpoint(
+        cls,
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        ckpt_path: Path = None,
+    ) -> None:
+        out_class = cls(
+            jobid=jobid,
+            logger_path=logger_path,
+            config=config,
+        )
+
+        if ckpt_path is None:
+            if len(config.checkpointing_path) > 0:
+                ckpt_path = config.checkpointing_path
+            else:
+                logger.error(
+                    """Provide checkpointing path either directly or
+                    through the model config"""
+                )
+
+        checkpointer = PyTreeCheckpointer()
+        out_class.solver.state_neural_net = checkpointer.restore(
+            ckpt_path, item=out_class.solver.state_neural_net
+        )
+        out_class.state = out_class.solver.state_neural_net
+        logger.info("Loaded MongeMapTrainer from checkpoint")
+        return out_class
 
 
 class NeuralDualTrainer(AbstractTrainer):
