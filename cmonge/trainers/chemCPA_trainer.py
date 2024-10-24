@@ -72,8 +72,8 @@ class ComPertTrainer(AbstractTrainer):
             init_value=self.config.ae_optim.lr,
             boundaries_and_scales={
                 0
-                + i * self.config.ae_optim.step_size: 1
-                - (i * self.config.ae_optim.gamma) / self.config.ae_optim.lr
+                + i * self.config.ae_optim.step_size:
+                i * self.config.ae_optim.gamma
                 for i in range(self.num_train_iters)
                 if i * self.config.ae_optim.step_size < self.num_train_iters
             },
@@ -85,9 +85,8 @@ class ComPertTrainer(AbstractTrainer):
             init_value=self.config.adversary_optim.lr,
             boundaries_and_scales={
                 0
-                + i * self.config.adversary_optim.step_size: 1
-                - (i * self.config.adversary_optim.gamma)
-                / self.config.adversary_optim.lr
+                + i * self.config.adversary_optim.step_size: 
+                i * self.config.adversary_optim.gamma
                 for i in range(self.num_train_iters)
                 if i * self.config.adversary_optim.step_size < self.num_train_iters
             },
