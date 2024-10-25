@@ -2,7 +2,7 @@ import collections
 import functools
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional, Tuple
+from typing import Callable, Dict, Iterator, Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -356,7 +356,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         config: DotMap,
         datamodule: ConditionalDataModule,
         ckpt_path: Path,
-    ) -> Union[ConditionalMongeTrainer, None]:
+    ) -> Union[AbstractTrainer, None]:
         try:
             out_class = cls(
                 jobid=jobid,
