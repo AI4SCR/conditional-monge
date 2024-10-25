@@ -74,6 +74,13 @@ trainer.train(datamodule)
 trainer.evaluate(datamodule)
 ```
 
+## Older checkpoints loading
+If you want to load model weights of older checkpoints (cmonge-{moa, rdkit}-ood or cmonge-{moa, rdkit}-homogeneous), make sure you are on the tag `cmonge_checkpoint_loading`.
+
+```sh
+git checkout cmonge_checkpoint_loading
+```
+
 ## Citation
 If you use the package, please cite:
 ```bib
