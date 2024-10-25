@@ -7,11 +7,13 @@
 
 An extension of the [Monge Gap](https://arxiv.org/abs/2302.04953), an approach to estimate transport maps conditionally on arbitrary context vectors. It is based on a two-step training procedure combining an encoder-decoder architecture with an OT estimator. The model is applied to [4i](https://pubmed.ncbi.nlm.nih.gov/30072512/) and [scRNA-seq](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7289078/) datasets.
 
-## Environment setup
+## Environment setup - poetry installation
 
 The environment is managed with [poetry](https://python-poetry.org/docs/managing-environments/). We recommend setting up a virtual environment. The code was tested in Python 3.10.
 ```sh
 pip install poetry
+git clone git@github.com:AI4SCR/conditional-monge.git
+cd cmonge
 poetry install -v
 ```
 
@@ -19,6 +21,13 @@ If the installation was successful you can run the tests using pytest
 ```sh
 poetry shell # activate env
 pytest
+```
+
+## Installation from PyPI
+
+You can install this package as follows
+```sh
+pip install cmonge
 ```
 
 ## Data
