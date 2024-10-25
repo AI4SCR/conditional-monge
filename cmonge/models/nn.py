@@ -341,6 +341,19 @@ class ConditionalPerturbationNetwork(ModelBase):
             for i, e in enumerate(self.context_entity_bonds)
             if i < num_contexts
         ]
+
+        # Backwards compatability for dim_cond_map
+        if (
+            not isinstance(self.dim_cond_map, Iterable)
+            and self.dim_cond_map is not None
+        ):
+            if not self.embed_cond_equal:
+                dim_cond_map = [self.dim_cond_map, 1]  # For sciplex backwards compat
+            else:
+                dim_cond_map = [self.dim_cond_map] * num_contexts
+        else:
+            dim_cond_map = self.dim_cond_map
+
         if not self.embed_cond_equal:
             # Each context is processed by a different layer, good for combining modalities
             assert len(self.context_entity_bonds) == len(
