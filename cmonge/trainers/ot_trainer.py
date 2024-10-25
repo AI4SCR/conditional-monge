@@ -200,7 +200,7 @@ class MongeMapTrainer(AbstractTrainer):
         logger_path: Path,
         config: DotMap,
         ckpt_path: Path = None,
-    ) -> None:
+    ) -> Union[MongeMapTrainer, None]:
 
         try:
             out_class = cls(
@@ -214,10 +214,8 @@ class MongeMapTrainer(AbstractTrainer):
                     ckpt_path = config.checkpointing_path
                 else:
                     logger.error(
-                        """Provide checkpointing path either directly or
-                        through the model config"""
+                        "Provide checkpointing path either directly or through the model config"
                     )
-                    return
             checkpointer = PyTreeCheckpointer()
             out_class.solver.state_neural_net = checkpointer.restore(
                 ckpt_path, item=out_class.solver.state_neural_net
@@ -225,7 +223,7 @@ class MongeMapTrainer(AbstractTrainer):
             out_class.state = out_class.solver.state_neural_net
             logger.info("Loaded MongeMapTrainer from checkpoint")
             return out_class
-        except:
+        except Exception:
             logger.error(
                 "Failed to load checkpoint, are you sure checkpoint was saved and correct path is provided?"
             )
