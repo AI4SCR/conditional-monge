@@ -7,12 +7,12 @@ import jax.numpy as jnp
 import optax
 from dotmap import DotMap
 from flax import linen as nn
-from jax.lib import xla_bridge
 from flax.training.orbax_utils import save_args_from_target
+from jax.lib import xla_bridge
 from loguru import logger
+from orbax.checkpoint import PyTreeCheckpointer
 from ott.solvers.nn import models, neuraldual
 from ott.tools import map_estimator
-from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.single_loader import AbstractDataModule
 from cmonge.evaluate import (
