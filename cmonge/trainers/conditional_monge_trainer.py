@@ -326,7 +326,15 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
         create_or_update_logfile(self.logger_path, self.metrics)
 
-    def save_checkpoint(self, path: Path) -> None:
+    def save_checkpoint(self, path: Path, config: DotMap = None) -> None:
+        if path is None and config is None:
+            logger.error(
+                """Please provide a checkpoint save path
+            either directly or through the config, checkpoint was NOT saved."""
+            )
+        elif path is None:
+            path = config.checkpointing_path
+
         ckpt = self.state_neural_net
         checkpointer = PyTreeCheckpointer()
         save_args = save_args_from_target(ckpt)
@@ -341,15 +349,30 @@ class ConditionalMongeTrainer(AbstractTrainer):
         datamodule: ConditionalDataModule,
         ckpt_path: Path,
     ) -> None:
-        out_class = cls(
-            jobid=jobid,
-            logger_path=logger_path,
-            config=config,
-            datamodule=datamodule,
-        )
-        checkpointer = PyTreeCheckpointer()
-        out_class.state_neural_net = checkpointer.restore(
-            ckpt_path, item=out_class.state_neural_net
-        )
-        logger.info("Loaded ConditionalMongeTrainer from checkpoint")
-        return out_class
+        try:
+            out_class = cls(
+                jobid=jobid,
+                logger_path=logger_path,
+                config=config,
+                datamodule=datamodule,
+            )
+            if ckpt_path is None:
+                if len(config.checkpointing_path) > 0:
+                    ckpt_path = config.checkpointing_path
+                else:
+                    logger.error(
+                        """Provide checkpointing path either directly or
+                        through the model config"""
+                    )
+                    return
+            checkpointer = PyTreeCheckpointer()
+            out_class.state_neural_net = checkpointer.restore(
+                ckpt_path, item=out_class.state_neural_net
+            )
+            logger.info("Loaded ConditionalMongeTrainer from checkpoint")
+            return out_class
+        except:
+            logger.error(
+                "Failed to load checkpoint, are you sure checkpoint was saved and correct path is provided?"
+            )
+            return

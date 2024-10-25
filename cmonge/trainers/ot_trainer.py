@@ -183,7 +183,7 @@ class MongeMapTrainer(AbstractTrainer):
         if path is None and config is None:
             logger.error(
                 """Please provide a checkpoint save path
-            either directly or through the config"""
+            either directly or through the config, checkpoint was NOT saved."""
             )
         elif path is None:
             path = config.checkpointing_path
@@ -201,28 +201,35 @@ class MongeMapTrainer(AbstractTrainer):
         config: DotMap,
         ckpt_path: Path = None,
     ) -> None:
-        out_class = cls(
-            jobid=jobid,
-            logger_path=logger_path,
-            config=config,
-        )
 
-        if ckpt_path is None:
-            if len(config.checkpointing_path) > 0:
-                ckpt_path = config.checkpointing_path
-            else:
-                logger.error(
-                    """Provide checkpointing path either directly or
-                    through the model config"""
-                )
+        try:
+            out_class = cls(
+                jobid=jobid,
+                logger_path=logger_path,
+                config=config,
+            )
 
-        checkpointer = PyTreeCheckpointer()
-        out_class.solver.state_neural_net = checkpointer.restore(
-            ckpt_path, item=out_class.solver.state_neural_net
-        )
-        out_class.state = out_class.solver.state_neural_net
-        logger.info("Loaded MongeMapTrainer from checkpoint")
-        return out_class
+            if ckpt_path is None:
+                if len(config.checkpointing_path) > 0:
+                    ckpt_path = config.checkpointing_path
+                else:
+                    logger.error(
+                        """Provide checkpointing path either directly or
+                        through the model config"""
+                    )
+                    return
+            checkpointer = PyTreeCheckpointer()
+            out_class.solver.state_neural_net = checkpointer.restore(
+                ckpt_path, item=out_class.solver.state_neural_net
+            )
+            out_class.state = out_class.solver.state_neural_net
+            logger.info("Loaded MongeMapTrainer from checkpoint")
+            return out_class
+        except:
+            logger.error(
+                "Failed to load checkpoint, are you sure checkpoint was saved and correct path is provided?"
+            )
+            return
 
 
 class NeuralDualTrainer(AbstractTrainer):
