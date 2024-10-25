@@ -348,7 +348,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         config: DotMap,
         datamodule: ConditionalDataModule,
         ckpt_path: Path,
-    ) -> None:
+    ) -> Union[ConditionalMongeTrainer, None]:
         try:
             out_class = cls(
                 jobid=jobid,
@@ -361,17 +361,15 @@ class ConditionalMongeTrainer(AbstractTrainer):
                     ckpt_path = config.checkpointing_path
                 else:
                     logger.error(
-                        """Provide checkpointing path either directly or
-                        through the model config"""
+                        "Provide checkpointing path either directly or through the model config"
                     )
-                    return
             checkpointer = PyTreeCheckpointer()
             out_class.state_neural_net = checkpointer.restore(
                 ckpt_path, item=out_class.state_neural_net
             )
             logger.info("Loaded ConditionalMongeTrainer from checkpoint")
             return out_class
-        except:
+        except Exception:
             logger.error(
                 "Failed to load checkpoint, are you sure checkpoint was saved and correct path is provided?"
             )
