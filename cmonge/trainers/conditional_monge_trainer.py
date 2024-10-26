@@ -378,4 +378,3 @@ class ConditionalMongeTrainer(AbstractTrainer):
             logger.error(
                 "Failed to load checkpoint, are you sure checkpoint was saved and correct path is provided?"
             )
-            return
