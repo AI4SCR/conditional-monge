@@ -336,10 +336,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
     def save_checkpoint(self, path: Path, config: DotMap = None) -> None:
         if path is None and config is None:
-            logger.error(
-                """Please provide a checkpoint save path
-            either directly or through the config, checkpoint was NOT saved."""
-            )
+            logger.error("Please provide a checkpoint save path either directly or through the config, checkpoint was NOT saved.")
         elif path is None:
             path = config.checkpointing_path
 
