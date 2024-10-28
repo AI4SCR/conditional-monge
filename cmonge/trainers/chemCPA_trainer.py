@@ -71,9 +71,7 @@ class ComPertTrainer(AbstractTrainer):
         ae_lr_scheduler = optax.piecewise_constant_schedule(
             init_value=self.config.ae_optim.lr,
             boundaries_and_scales={
-                0
-                + i * self.config.ae_optim.step_size:
-                i * self.config.ae_optim.gamma
+                0 + i * self.config.ae_optim.step_size: i * self.config.ae_optim.gamma
                 for i in range(self.num_train_iters)
                 if i * self.config.ae_optim.step_size < self.num_train_iters
             },
@@ -85,8 +83,9 @@ class ComPertTrainer(AbstractTrainer):
             init_value=self.config.adversary_optim.lr,
             boundaries_and_scales={
                 0
-                + i * self.config.adversary_optim.step_size: 
-                i * self.config.adversary_optim.gamma
+                + i
+                * self.config.adversary_optim.step_size: i
+                * self.config.adversary_optim.gamma
                 for i in range(self.num_train_iters)
                 if i * self.config.adversary_optim.step_size < self.num_train_iters
             },
@@ -554,7 +553,7 @@ class ComPertTrainer(AbstractTrainer):
                     target = target[0][:, datamodule.marker_idx]
                     transport = transport[:, datamodule.marker_idx]
 
-                log_metrics(metrics, target, transport)
+                log_metrics(metrics, target[0], transport)
                 if enum > n_samples:
                     break
 
