@@ -1,10 +1,19 @@
 import abc
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Type, TypeVar, Union
+from typing import Any, Dict, Optional, Type, TypeVar
 
 import jax.numpy as jnp
 import optax
+from dotmap import DotMap
+from flax import linen as nn
+from flax.training.orbax_utils import save_args_from_target
+from jax.lib import xla_bridge
+from loguru import logger
+from orbax.checkpoint import PyTreeCheckpointer
+from ott.solvers.nn import models, neuraldual
+from ott.tools import map_estimator
+
 from cmonge.datasets.single_loader import AbstractDataModule
 from cmonge.evaluate import (
     init_logger_dict,
@@ -14,14 +23,6 @@ from cmonge.evaluate import (
 )
 from cmonge.metrics import fitting_loss, regularizer
 from cmonge.utils import create_or_update_logfile, optim_factory
-from dotmap import DotMap
-from flax import linen as nn
-from flax.training.orbax_utils import save_args_from_target
-from jax.lib import xla_bridge
-from loguru import logger
-from orbax.checkpoint import PyTreeCheckpointer
-from ott.solvers.nn import models, neuraldual
-from ott.tools import map_estimator
 
 T = TypeVar("T", bound="AbstractTrainer")
 
@@ -68,8 +69,18 @@ class AbstractTrainer(abc.ABC):
         """Abstract property to set the checkpointed attribute."""
         pass
 
-    def save_checkpoint(self, path: Path, config: DotMap = None) -> None:
-        """Abstract method for saving model parameters to a pickle file."""
+    def save_checkpoint(
+        self, path: Optional[Path] = None, config: Optional[DotMap] = None
+    ) -> None:
+        """Abstract method for saving model parameters to a pickle file.
+
+        Args:
+            path: Path where the checkpoint should be saved. Defaults to None in which case
+                it is retrieved from config.
+            config: The model training configuration with a `checkpointing_path` field.
+                Defaults to None.
+                NOTE: If `config` and `path` are both not None, `path` takes preference.
+        """
         if path is None and config is None:
             raise ValueError(
                 "Checkpoint cannot be saved. Provide a checkpoint save path either directly or through the config."
@@ -93,6 +104,20 @@ class AbstractTrainer(abc.ABC):
         *args,
         **kwargs,
     ) -> T:
+        """
+        Loading a model from a checkpoint
+
+        Args:
+            cls: Class object to be created.
+            jobid: ID of the job.
+            logger_path: Path where the logging files are stored.
+            config: Model training configuration.
+            ckpt_path: Optional path from where checkpoint is restored.
+                Defaults to None, in that case inferred from config.
+
+        Returns:
+            Class object with restored weights.
+        """
         try:
             out_class = cls(
                 jobid=jobid, logger_path=logger_path, config=config, *args, **kwargs
