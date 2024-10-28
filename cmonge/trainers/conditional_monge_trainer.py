@@ -136,12 +136,12 @@ class ConditionalMongeTrainer(AbstractTrainer):
             is_logging_step = step % 100 == 0
             is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
             train_batch, condition = self.generate_batch(
-                datamodule, "train", self.dose_split
+                datamodule, "train
             )
             valid_batch, _ = (
                 ({"num_contexts": None}, None)
                 if not is_logging_step
-                else self.generate_batch(datamodule, "valid", self.dose_split)
+                else self.generate_batch(datamodule, "valid")
             )
 
             self.state_neural_net, grads, current_logs = self.step_fn(
