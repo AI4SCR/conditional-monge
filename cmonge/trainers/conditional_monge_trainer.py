@@ -8,6 +8,14 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import optax
+from dotmap import DotMap
+from flax.core import frozen_dict
+from flax.training import train_state
+from flax.training.orbax_utils import save_args_from_target
+from jax.tree_util import tree_map
+from loguru import logger
+from orbax.checkpoint import PyTreeCheckpointer
+
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
 from cmonge.models.embedding import BaseEmbedding, EmbeddingFactory
@@ -18,13 +26,6 @@ from cmonge.trainers.ot_trainer import (
     regularizer_factory,
 )
 from cmonge.utils import create_or_update_logfile, optim_factory
-from dotmap import DotMap
-from flax.core import frozen_dict
-from flax.training import train_state
-from flax.training.orbax_utils import save_args_from_target
-from jax.tree_util import tree_map
-from loguru import logger
-from orbax.checkpoint import PyTreeCheckpointer
 
 
 class ConditionalMongeTrainer(AbstractTrainer):
@@ -51,6 +52,12 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.setup(datamodule=datamodule)
 
     def setup(self, datamodule: ConditionalDataModule):
+        """
+        Setup function has to be overriden since it is abstract in base.
+
+        Args:
+            datamodule (ConditionalDataModule): The datamodule to be trained on.
+        """
         # setup loss function and regularizer
         fitting_loss_fn = loss_factory[self.config.fitting_loss.name]
         regularizer_fn = regularizer_factory[self.config.regularizer.name]
