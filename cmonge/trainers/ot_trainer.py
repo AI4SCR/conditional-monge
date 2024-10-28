@@ -90,13 +90,13 @@ class AbstractTrainer(abc.ABC):
         logger_path: Path,
         config: DotMap,
         ckpt_path: Path = None,
+        *args,
+        **kwargs,
     ) -> T:
         try:
             # TODO: Does this work for every base class?
             out_class = cls(
-                jobid=jobid,
-                logger_path=logger_path,
-                config=config,
+                jobid=jobid, logger_path=logger_path, config=config, *args, **kwargs
             )
 
             if ckpt_path is None:
