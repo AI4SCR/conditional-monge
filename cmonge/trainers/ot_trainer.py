@@ -94,7 +94,6 @@ class AbstractTrainer(abc.ABC):
         **kwargs,
     ) -> T:
         try:
-            # TODO: Does this work for every base class?
             out_class = cls(
                 jobid=jobid, logger_path=logger_path, config=config, *args, **kwargs
             )
