@@ -19,8 +19,11 @@ from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
 from cmonge.models.embedding import BaseEmbedding, EmbeddingFactory
 from cmonge.models.nn import ConditionalPerturbationNetwork
-from cmonge.trainers.ot_trainer import (AbstractTrainer, loss_factory,
-                                        regularizer_factory)
+from cmonge.trainers.ot_trainer import (
+    AbstractTrainer,
+    loss_factory,
+    regularizer_factory,
+)
 from cmonge.utils import create_or_update_logfile, optim_factory
 
 
