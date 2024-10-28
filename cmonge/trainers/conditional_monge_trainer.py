@@ -4,17 +4,10 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Dict, Iterator, Optional, Tuple, Union
 
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import optax
-from dotmap import DotMap
-from flax.core import frozen_dict
-from flax.training import train_state
-from flax.training.orbax_utils import save_args_from_target
-from jax.tree_util import tree_map
-from loguru import logger
-from orbax.checkpoint import PyTreeCheckpointer
-
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
 from cmonge.models.embedding import BaseEmbedding, EmbeddingFactory
@@ -25,6 +18,13 @@ from cmonge.trainers.ot_trainer import (
     regularizer_factory,
 )
 from cmonge.utils import create_or_update_logfile, optim_factory
+from dotmap import DotMap
+from flax.core import frozen_dict
+from flax.training import train_state
+from flax.training.orbax_utils import save_args_from_target
+from jax.tree_util import tree_map
+from loguru import logger
+from orbax.checkpoint import PyTreeCheckpointer
 
 
 class ConditionalMongeTrainer(AbstractTrainer):
@@ -47,7 +47,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.grad_acc_steps = self.config.optim.get("grad_acc_steps", 1)
         self.init_model(datamodule=datamodule)
 
-    def init_model(self, datamodule: ConditionalDataModule):
+    def setup(self, datamodule: ConditionalDataModule):
         # setup loss function and regularizer
         fitting_loss_fn = loss_factory[self.config.fitting_loss.name]
         regularizer_fn = regularizer_factory[self.config.regularizer.name]
@@ -326,49 +326,11 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
         create_or_update_logfile(self.logger_path, self.metrics)
 
-    def save_checkpoint(self, path: Path, config: DotMap = None) -> None:
-        if path is None and config is None:
-            logger.error(
-                "Please provide a checkpoint save path either directly or through the config, checkpoint was NOT saved."
-            )
-        elif path is None:
-            path = config.checkpointing_path
+    @property
+    def model(self) -> nn.Module:
+        return self.state_neural_net
 
-        ckpt = self.state_neural_net
-        checkpointer = PyTreeCheckpointer()
-        save_args = save_args_from_target(ckpt)
-        checkpointer.save(path, ckpt, save_args=save_args, force=True)
-
-    @classmethod
-    def load_checkpoint(
-        cls,
-        jobid: int,
-        logger_path: Path,
-        config: DotMap,
-        datamodule: ConditionalDataModule,
-        ckpt_path: Path,
-    ) -> Union[AbstractTrainer, None]:
-        try:
-            out_class = cls(
-                jobid=jobid,
-                logger_path=logger_path,
-                config=config,
-                datamodule=datamodule,
-            )
-            if ckpt_path is None:
-                if len(config.checkpointing_path) > 0:
-                    ckpt_path = config.checkpointing_path
-                else:
-                    logger.error(
-                        "Provide checkpointing path either directly or through the model config"
-                    )
-            checkpointer = PyTreeCheckpointer()
-            out_class.state_neural_net = checkpointer.restore(
-                ckpt_path, item=out_class.state_neural_net
-            )
-            logger.info("Loaded ConditionalMongeTrainer from checkpoint")
-            return out_class
-        except Exception:
-            logger.error(
-                "Failed to load checkpoint, are you sure checkpoint was saved and correct path is provided?"
-            )
+    @model.setter
+    def model(self, value: nn.Module):
+        """Setter for the model to be checkpointed."""
+        self.state_neural_net = value
