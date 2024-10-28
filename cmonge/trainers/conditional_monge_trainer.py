@@ -19,11 +19,8 @@ from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
 from cmonge.models.embedding import BaseEmbedding, EmbeddingFactory
 from cmonge.models.nn import ConditionalPerturbationNetwork
-from cmonge.trainers.ot_trainer import (
-    AbstractTrainer,
-    loss_factory,
-    regularizer_factory,
-)
+from cmonge.trainers.ot_trainer import (AbstractTrainer, loss_factory,
+                                        regularizer_factory)
 from cmonge.utils import create_or_update_logfile, optim_factory
 
 
@@ -135,9 +132,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         for step in tbar:
             is_logging_step = step % 100 == 0
             is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
-            train_batch, condition = self.generate_batch(
-                datamodule, "train
-            )
+            train_batch, condition = self.generate_batch(datamodule, "train")
             valid_batch, _ = (
                 ({"num_contexts": None}, None)
                 if not is_logging_step
