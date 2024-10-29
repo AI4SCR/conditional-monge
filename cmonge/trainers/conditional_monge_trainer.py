@@ -46,7 +46,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.regularizer_strength = 1
         self.num_train_iters = self.config.num_train_iters
         self.grad_acc_steps = self.config.optim.get("grad_acc_steps", 1)
-        self.init_model(datamodule=datamodule)
+        self.setup(datamodule=datamodule)
 
     def setup(self, datamodule: ConditionalDataModule):
         """
