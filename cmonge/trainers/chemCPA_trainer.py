@@ -16,7 +16,7 @@ from loguru import logger
 from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
-from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
+from cmonge.evaluate import init_logger_dict
 from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA
 from cmonge.models.embedding import embed_factory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
@@ -550,14 +550,16 @@ class ComPertTrainer(AbstractTrainer):
                     pred_m = pred_m_v[:, :dim]
                     pred_v = pred_m_v[:, dim:]
                 else:
-                    pred = source[0]
-                    pred_m = source.mean(axis=0)
-                    pred_v = source.var(axis=0)
-                target_m = target.mean(axis=0)
-                target_v = target.var(axis=0)
+                    pred_m_v = source[0]
+                    pred_m = pred_m_v.mean(axis=0)
+                    pred_v = pred_m_v.var(axis=0)
+                target_m = target[0].mean(axis=0)
+                target_v = target[0].var(axis=0)
                 if datamodule.marker_idx:
-                    target = target[0][:, datamodule.marker_idx]
-                    pred_m_v = pred[:, datamodule.marker_idx]
+                    target_m = target_m[:, datamodule.marker_idx]
+                    target_v = target_v[:, datamodule.marker_idx]
+                    pred_m = pred_m[:, datamodule.marker_idx]
+                    pred_v = pred_v[:, datamodule.marker_idx]
 
                 metrics["r2_mean"].append(average_r2(target_m, pred_m))
                 metrics["r2_var"].append(average_r2(target_v, pred_v))
@@ -577,9 +579,10 @@ class ComPertTrainer(AbstractTrainer):
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}
-                init_logger_dict(
-                    self.metrics[split_type][cond], datamodule.drug_condition
-                )
+                self.metrics[split_type][cond]["drug"] = drug
+                self.metrics[split_type][cond]["r2_mean"] = []
+                self.metrics[split_type][cond]["r2_var"] = []
+
                 evaluate_condition(
                     loader_source,
                     loader_target,
