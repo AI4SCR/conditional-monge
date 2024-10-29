@@ -44,7 +44,8 @@ class RDKitEmbedding(BaseEmbedding):
         drug_to_smile_path: str,
         name: str,
         model_dir: str,
-        datamodule: ConditionalDataModule,  # For compatability
+        datamodule: ConditionalDataModule,
+        dose_split: bool = True,
         drug_list: List = [
             "abexinostat",
             "belinostat",
@@ -61,6 +62,7 @@ class RDKitEmbedding(BaseEmbedding):
         self.smile_path = Path(smile_path)
         self.drug_to_smile_path = Path(drug_to_smile_path)
         self.model_dir = Path(model_dir)
+        self.dose_split = dose_split
         if not checkpoint:
             logger.info("Calculating RDKit embedding vectors")
             smiles_df = pd.read_csv(self.smile_path)
@@ -124,8 +126,8 @@ class RDKitEmbedding(BaseEmbedding):
             values = jnp.asarray(row[filter_col].values.astype("float"))
             self.embeddings[name] = values
 
-    def __call__(self, condition: str, dose_split: bool = True):
-        if dose_split:
+    def __call__(self, condition: str):
+        if self.dose_split:
             cond, dose = condition.split("-")
             condition = self.embeddings[cond]
             condition = jnp.append(condition, np.log(int(dose)))
@@ -149,9 +151,11 @@ class ModeOfActionEmbedding(BaseEmbedding):
         checkpoint: bool,
         name: str,
         model_dir: str,
+        dose_split: bool = True,
     ) -> None:
         super().__init__(datamodule.batch_size)
         self.model_dir = Path(model_dir)
+        self.dose_split = dose_split
         if not checkpoint:
             labels = datamodule.train_conditions
             similarity_matrix = jnp.full(
@@ -200,8 +204,8 @@ class ModeOfActionEmbedding(BaseEmbedding):
             values = jnp.asarray(row.values.astype("float"))
             self.embeddings[index] = values
 
-    def __call__(self, condition: str, dose_split: bool = True):
-        if dose_split:
+    def __call__(self, condition: str):
+        if self.dose_split:
             cond, dose = condition.split("-")
             condition = self.embeddings[condition]
             condition = jnp.append(condition, np.log(int(dose)))

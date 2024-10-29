@@ -45,9 +45,6 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.regularizer_strength = 1
         self.num_train_iters = self.config.num_train_iters
         self.grad_acc_steps = self.config.optim.get("grad_acc_steps", 1)
-
-        self.dose_split = self.config.embedding.get("dose_split", True)
-
         self.init_model(datamodule=datamodule)
 
     def init_model(self, datamodule: ConditionalDataModule):
@@ -96,9 +93,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
         condition_to_loaders = datamodule.get_loaders_by_type(split_type)
         condition = datamodule.sample_condition(split_type)
         loader_source, loader_target = condition_to_loaders[condition]
-        embeddings, n_contexts = self.embedding_module(
-            condition=condition, dose_split=self.dose_split
-        )
+        embeddings, n_contexts = self.embedding_module(condition=condition)
         return (
             {
                 "source": next(loader_source),
@@ -141,7 +136,6 @@ class ConditionalMongeTrainer(AbstractTrainer):
             is_logging_step = step % 100 == 0
             is_gradient_acc_step = (step + 1) % self.grad_acc_steps == 0
             train_batch, condition = self.generate_batch(datamodule, "train")
-
             valid_batch, _ = (
                 ({"num_contexts": None}, None)
                 if not is_logging_step
@@ -291,9 +285,7 @@ class ConditionalMongeTrainer(AbstractTrainer):
             self.metrics[split_type] = {}
             for cond, loader in cond_to_loaders.items():
                 logger.info(f"Evaluation started on {cond} {split_type}.")
-                cond_embedding, n_contexts = self.embedding_module(
-                    cond, self.dose_split
-                )
+                cond_embedding, n_contexts = self.embedding_module(cond)
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}

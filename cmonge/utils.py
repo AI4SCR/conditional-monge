@@ -37,7 +37,7 @@ def get_source_target_transport(
     all_expr = []
     for condition in conditions:
         print(condition)
-        cond_embeddings = trainer.embedding_module(condition)
+        cond_embeddings, num_contexts = trainer.embedding_module(condition)
 
         if split_type == "valid":
             loader_source, loader_target = datamodule.valid_dataloaders()[condition]
@@ -64,7 +64,7 @@ def get_source_target_transport(
             all_expr.append(res_source)
 
         if transport:
-            trans = trainer.transport(source_expr, cond_embeddings)
+            trans = trainer.transport(source_expr, cond_embeddings, num_contexts)
             trans = datamodule.decoder(trans)
             trans = pd.DataFrame(trans)
             trans["dtype"] = "trans"
