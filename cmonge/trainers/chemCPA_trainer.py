@@ -16,12 +16,11 @@ from loguru import logger
 from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
-from cmonge.evaluate import init_logger_dict
 from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA
 from cmonge.models.embedding import embed_factory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
 from cmonge.utils import create_or_update_logfile, optim_factory
-from cmonge.metrics import average_r2
+from cmonge.metrics import r2
 
 
 class ComPertTrainer(AbstractTrainer):
@@ -531,6 +530,7 @@ class ComPertTrainer(AbstractTrainer):
         self,
         datamodule: ConditionalDataModule,
         identity: bool = False,
+        n_samples: int = 9,
     ) -> None:
         """Evaluate a trained model on a validation set and save the metrics to a json file."""
 
@@ -551,18 +551,27 @@ class ComPertTrainer(AbstractTrainer):
                     pred_v = pred_m_v[:, dim:]
                 else:
                     pred_m_v = source[0]
-                    pred_m = pred_m_v.mean(axis=0)
-                    pred_v = pred_m_v.var(axis=0)
-                target_m = target[0].mean(axis=0)
-                target_v = target[0].var(axis=0)
                 if datamodule.marker_idx:
-                    target_m = target_m[:, datamodule.marker_idx]
-                    target_v = target_v[:, datamodule.marker_idx]
-                    pred_m = pred_m[:, datamodule.marker_idx]
-                    pred_v = pred_v[:, datamodule.marker_idx]
+                    target = target[0][:, datamodule.marker_idx]
+                    if identity:
+                        pred_m_v = pred_m_v[:, datamodule.marker_idx]
+                        pred_m = pred_m_v.mean(axis=0)
+                        pred_v = pred_m_v.var(axis=0)
+                    else:
+                        pred_m = pred_m[:, datamodule.marker_idx]
+                        pred_v = pred_v[:, datamodule.marker_idx]
+                if not identity:
+                    pred_m = pred_m.mean(axis=0)
+                    pred_v = pred_v.mean(axis=0)
 
-                metrics["r2_mean"].append(average_r2(target_m, pred_m))
-                metrics["r2_var"].append(average_r2(target_v, pred_v))
+                target_m = target.mean(axis=0)
+                target_v = target.var(axis=0)
+
+                metrics["r2_mean"].append(r2(target_m, pred_m))
+                metrics["r2_var"].append(r2(target_v, pred_v))
+
+                if enum > n_samples:
+                    break
 
         def evaluate_split(
             cond_to_loaders: Dict[
@@ -579,9 +588,10 @@ class ComPertTrainer(AbstractTrainer):
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}
-                self.metrics[split_type][cond]["drug"] = drug
+                self.metrics[split_type][cond]["drug"] = datamodule.drug_condition
                 self.metrics[split_type][cond]["r2_mean"] = []
                 self.metrics[split_type][cond]["r2_var"] = []
+                self.metrics[split_type][cond]["mean_statistics"] = {}
 
                 evaluate_condition(
                     loader_source,
@@ -590,11 +600,17 @@ class ComPertTrainer(AbstractTrainer):
                     self.metrics[split_type][cond],
                     n_contexts,
                 )
-                self.metrics["mean_statistics"]["mean_r2_mean"] = float(
-                    sum(self.metrics["r2_mean"]) / len(self.metrics["r2_mean"])
+                self.metrics[split_type][cond]["mean_statistics"]["mean_r2_mean"] = (
+                    float(
+                        sum(self.metrics[split_type][cond]["r2_mean"])
+                        / len(self.metrics[split_type][cond]["r2_mean"])
+                    )
                 )
-                self.metrics["mean_statistics"]["mean_r2_var"] = float(
-                    sum(self.metrics["r2_var"]) / len(self.metrics["r2_var"])
+                self.metrics[split_type][cond]["mean_statistics"]["mean_r2_var"] = (
+                    float(
+                        sum(self.metrics[split_type][cond]["r2_var"])
+                        / len(self.metrics[split_type][cond]["r2_var"])
+                    )
                 )
 
         # Log in test set if present, otherwise valid otherwise train
