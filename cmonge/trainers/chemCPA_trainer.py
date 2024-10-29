@@ -21,6 +21,7 @@ from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA
 from cmonge.models.embedding import embed_factory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
 from cmonge.utils import create_or_update_logfile, optim_factory
+from cmonge.metrics import average_r2
 
 
 class ComPertTrainer(AbstractTrainer):
@@ -505,7 +506,7 @@ class ComPertTrainer(AbstractTrainer):
                 )
             tbar.set_postfix_str(postfix_str)
 
-    def transport(
+    def predict(
         self, source, target, cond_embeddings, num_contexts, train: bool = False
     ):
         source, source_celltype, source_drugs = source
@@ -530,7 +531,6 @@ class ComPertTrainer(AbstractTrainer):
         self,
         datamodule: ConditionalDataModule,
         identity: bool = False,
-        n_samples: int = 9,
     ) -> None:
         """Evaluate a trained model on a validation set and save the metrics to a json file."""
 
@@ -543,19 +543,24 @@ class ComPertTrainer(AbstractTrainer):
         ):
             for enum, (source, target) in enumerate(zip(loader_source, loader_target)):
                 if not identity:
-                    transport = self.transport(
+                    pred_m_v = self.predict(
                         source, target, cond_embeddings, n_contexts, train=False
                     )
+                    dim = int(pred_m_v.shape[1] / 2)
+                    pred_m = pred_m_v[:, :dim]
+                    pred_v = pred_m_v[:, dim:]
                 else:
-                    transport = source[0]
-
+                    pred = source[0]
+                    pred_m = source.mean(axis=0)
+                    pred_v = source.var(axis=0)
+                target_m = target.mean(axis=0)
+                target_v = target.var(axis=0)
                 if datamodule.marker_idx:
                     target = target[0][:, datamodule.marker_idx]
-                    transport = transport[:, datamodule.marker_idx]
+                    pred_m_v = pred[:, datamodule.marker_idx]
 
-                log_metrics(metrics, target[0], transport)
-                if enum > n_samples:
-                    break
+                metrics["r2_mean"].append(average_r2(target_m, pred_m))
+                metrics["r2_var"].append(average_r2(target_v, pred_v))
 
         def evaluate_split(
             cond_to_loaders: Dict[
@@ -582,7 +587,12 @@ class ComPertTrainer(AbstractTrainer):
                     self.metrics[split_type][cond],
                     n_contexts,
                 )
-                log_mean_metrics(self.metrics[split_type][cond])
+                self.metrics["mean_statistics"]["mean_r2_mean"] = float(
+                    sum(self.metrics["r2_mean"]) / len(self.metrics["r2_mean"])
+                )
+                self.metrics["mean_statistics"]["mean_r2_var"] = float(
+                    sum(self.metrics["r2_var"]) / len(self.metrics["r2_var"])
+                )
 
         # Log in test set if present, otherwise valid otherwise train
         if self.datamodule.data_config.split[2] > 0:
