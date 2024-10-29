@@ -9,6 +9,15 @@ from ott.tools.sinkhorn_divergence import sinkhorn_divergence
 from sklearn.metrics.pairwise import rbf_kernel
 
 
+def r2(target: jnp.ndarray, transport: jnp.ndarray) -> float:
+    """
+    Calculate the correlation coefficient r^2 between features in target and tansport.
+    """
+
+    r2 = np.corrcoef(target, transport)[0, 1] ** 2
+    return float(r2)
+
+
 def average_r2(target: jnp.ndarray, transport: jnp.ndarray) -> float:
     """
     Calculate the correlation coefficient r^2 between the means of average features in target and tansport.
