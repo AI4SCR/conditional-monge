@@ -133,7 +133,7 @@ class AbstractTrainer(abc.ABC):
             checkpointer = PyTreeCheckpointer()
             out_class.model = checkpointer.restore(ckpt_path, item=out_class.model)
 
-            logger.info("Loaded MongeMapTrainer from checkpoint")
+            logger.info("Loaded model from checkpoint")
             return out_class
         except Exception as e:
             raise Exception(
