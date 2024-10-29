@@ -662,6 +662,7 @@ class ComPertTrainer(AbstractTrainer):
         self,
         datamodule: ConditionalDataModule,
         identity: bool = False,
+        n_samples: int = 9,
     ) -> None:
         """Evaluate a trained model on a validation set and save the metrics to a json file."""
 
