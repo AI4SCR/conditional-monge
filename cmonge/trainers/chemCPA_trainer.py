@@ -19,6 +19,7 @@ from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA, TrainState
 from cmonge.models.embedding import embed_factory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
+<<<<<<< HEAD
 from cmonge.utils import (
     create_or_update_logfile,
     optim_factory,
@@ -26,6 +27,10 @@ from cmonge.utils import (
     jax_serializer,
 )
 from cmonge.metrics import r2
+=======
+from cmonge.utils import create_or_update_logfile, optim_factory
+from cmonge.metrics import average_r2
+>>>>>>> 9c223de (Evaluating like chemCPA)
 
 
 class ComPertTrainer(AbstractTrainer):
@@ -662,7 +667,6 @@ class ComPertTrainer(AbstractTrainer):
         self,
         datamodule: ConditionalDataModule,
         identity: bool = False,
-        n_samples: int = 9,
     ) -> None:
         """Evaluate a trained model on a validation set and save the metrics to a json file."""
 
