@@ -1,14 +1,16 @@
 import abc
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Type, TypeVar
 
 import jax.numpy as jnp
 import optax
 from dotmap import DotMap
 from flax import linen as nn
+from flax.training.orbax_utils import save_args_from_target
 from jax.lib import xla_bridge
 from loguru import logger
+from orbax.checkpoint import PyTreeCheckpointer
 from ott.solvers.nn import models, neuraldual
 from ott.tools import map_estimator
 
@@ -22,8 +24,10 @@ from cmonge.evaluate import (
 from cmonge.metrics import fitting_loss, regularizer
 from cmonge.utils import create_or_update_logfile, optim_factory
 
+T = TypeVar("T", bound="AbstractTrainer")
 
-class AbstractTrainer:
+
+class AbstractTrainer(abc.ABC):
     """Abstract class for neural OT traininig."""
 
     def __init__(self, jobid: int, logger_path: Path) -> None:
@@ -53,15 +57,88 @@ class AbstractTrainer:
         """Abstract method for transporting a batch of data."""
         pass
 
+    @property
     @abc.abstractmethod
-    def save_checkpoint(self, path: Path) -> None:
-        """Abstract method for saving model parameters to a pickle file."""
+    def model(self) -> nn.Module:
+        """Abstract method that returns the attribute to be checkpointed."""
         pass
 
+    @model.setter
     @abc.abstractmethod
-    def load_checkpoint(self, path: Path) -> None:
-        """Abstract method for loading model parameters from pickle file."""
+    def model(self, value: nn.Module):
+        """Abstract property to set the checkpointed attribute."""
         pass
+
+    def save_checkpoint(
+        self, path: Optional[Path] = None, config: Optional[DotMap] = None
+    ) -> None:
+        """Abstract method for saving model parameters to a pickle file.
+
+        Args:
+            path: Path where the checkpoint should be saved. Defaults to None in which case
+                it is retrieved from config.
+            config: The model training configuration with a `checkpointing_path` field.
+                Defaults to None.
+                NOTE: If `config` and `path` are both not None, `path` takes preference.
+        """
+        if path is None and config is None:
+            raise ValueError(
+                "Checkpoint cannot be saved. Provide a checkpoint save path either directly or through the config."
+            )
+        elif path is None:
+            path = config.checkpointing_path
+        try:
+            checkpointer = PyTreeCheckpointer()
+            save_args = save_args_from_target(self.model)
+            checkpointer.save(path, self.model, save_args=save_args, force=True)
+        except Exception as e:
+            raise Exception(f"Error in saving checkpoint to {path}: {e}")
+
+    @classmethod
+    def load_checkpoint(
+        cls: Type[T],
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        ckpt_path: Path = None,
+        *args,
+        **kwargs,
+    ) -> T:
+        """
+        Loading a model from a checkpoint
+
+        Args:
+            cls: Class object to be created.
+            jobid: ID of the job.
+            logger_path: Path where the logging files are stored.
+            config: Model training configuration.
+            ckpt_path: Optional path from where checkpoint is restored.
+                Defaults to None, in that case inferred from config.
+
+        Returns:
+            Class object with restored weights.
+        """
+        try:
+            out_class = cls(
+                jobid=jobid, logger_path=logger_path, config=config, *args, **kwargs
+            )
+
+            if ckpt_path is None:
+                if len(config.checkpointing_path) > 0:
+                    ckpt_path = config.checkpointing_path
+                else:
+                    logger.error(
+                        "Provide checkpointing path either directly or through the model config"
+                    )
+            checkpointer = PyTreeCheckpointer()
+            out_class.model = checkpointer.restore(ckpt_path, item=out_class.model)
+
+            logger.info("Loaded model from checkpoint")
+            return out_class
+        except Exception as e:
+            raise Exception(
+                f"Failed to load checkpoin from {ckpt_path}: {e}\nAre you sure checkpoint was saved and correct path is provided?"
+            )
 
     def evaluate(
         self,
@@ -165,25 +242,29 @@ class MongeMapTrainer(AbstractTrainer):
         logger.info("Training started")
         train_loader_source, train_loader_target = datamodule.train_dataloaders()
         valid_loader_source, valid_loader_target = datamodule.valid_dataloaders()
-        state, logs = self.solver.train_map_estimator(
+        self.solver.state_neural_net, logs = self.solver.train_map_estimator(
             trainloader_source=train_loader_source,
             trainloader_target=train_loader_target,
             validloader_source=valid_loader_source,
             validloader_target=valid_loader_target,
         )
-        self.state = state
         self.metrics["ottlogs"] = logs
         logger.info("Training finished.")
 
     def transport(self, source: jnp.ndarray) -> jnp.ndarray:
         """Transports a batch of data using the learned model."""
-        return self.state.apply_fn({"params": self.state.params}, source)
+        return self.solver.state_neural_net.apply_fn(
+            {"params": self.solver.state_neural_net.params}, source
+        )
 
-    def save_checkpoint(self, path: Path) -> None:
-        raise NotImplementedError
+    @property
+    def model(self) -> nn.Module:
+        return self.solver.state_neural_net
 
-    def load_checkpoint(self, path: Path) -> None:
-        raise NotImplementedError
+    @model.setter
+    def model(self, value: nn.Module):
+        """Setter for the model to be checkpointed."""
+        self.solver.state_neural_net = value
 
 
 class NeuralDualTrainer(AbstractTrainer):
@@ -261,11 +342,14 @@ class NeuralDualTrainer(AbstractTrainer):
         """Transports a batch of data using the Brenier formula."""
         return self.potentials.transport(source)
 
-    def save_checkpoint(self, path: Path) -> None:
-        raise NotImplementedError
+    @property
+    def model(self) -> nn.Module:
+        return self.neural_dual_solver
 
-    def load_checkpoint(self, path: Path) -> None:
-        raise NotImplementedError
+    @model.setter
+    def model(self, value: nn.Module):
+        """Setter for the model to be checkpointed."""
+        self.neural_dual_solver = value
 
 
 loss_factory = {"sinkhorn": fitting_loss}

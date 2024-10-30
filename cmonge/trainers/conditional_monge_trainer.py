@@ -2,8 +2,9 @@ import collections
 import functools
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional, Tuple
+from typing import Callable, Dict, Iterator, Optional, Tuple, Union
 
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import optax
@@ -45,9 +46,15 @@ class ConditionalMongeTrainer(AbstractTrainer):
         self.regularizer_strength = 1
         self.num_train_iters = self.config.num_train_iters
         self.grad_acc_steps = self.config.optim.get("grad_acc_steps", 1)
-        self.init_model(datamodule=datamodule)
+        self.setup(datamodule=datamodule)
 
-    def init_model(self, datamodule: ConditionalDataModule):
+    def setup(self, datamodule: ConditionalDataModule):
+        """
+        Setup function has to be overriden since it is abstract in base.
+
+        Args:
+            datamodule (ConditionalDataModule): The datamodule to be trained on.
+        """
         # setup loss function and regularizer
         fitting_loss_fn = loss_factory[self.config.fitting_loss.name]
         regularizer_fn = regularizer_factory[self.config.regularizer.name]
@@ -326,30 +333,11 @@ class ConditionalMongeTrainer(AbstractTrainer):
 
         create_or_update_logfile(self.logger_path, self.metrics)
 
-    def save_checkpoint(self, path: Path) -> None:
-        ckpt = self.state_neural_net
-        checkpointer = PyTreeCheckpointer()
-        save_args = save_args_from_target(ckpt)
-        checkpointer.save(path, ckpt, save_args=save_args, force=True)
+    @property
+    def model(self) -> nn.Module:
+        return self.state_neural_net
 
-    @classmethod
-    def load_checkpoint(
-        cls,
-        jobid: int,
-        logger_path: Path,
-        config: DotMap,
-        datamodule: ConditionalDataModule,
-        ckpt_path: Path,
-    ) -> None:
-        out_class = cls(
-            jobid=jobid,
-            logger_path=logger_path,
-            config=config,
-            datamodule=datamodule,
-        )
-        checkpointer = PyTreeCheckpointer()
-        out_class.state_neural_net = checkpointer.restore(
-            ckpt_path, item=out_class.state_neural_net
-        )
-        logger.info("Loaded ConditionalMongeTrainer from checkpoint")
-        return out_class
+    @model.setter
+    def model(self, value: nn.Module):
+        """Setter for the model to be checkpointed."""
+        self.state_neural_net = value
