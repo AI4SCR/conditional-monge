@@ -126,14 +126,13 @@ class ComPertTrainer(AbstractTrainer):
         except ImportError:
             tbar = range(self.num_train_iters)
 
-        train_conditions = []
         ae_grads = tree_map(jnp.zeros_like, self.state_autoencoder.params)
         adv_grads = tree_map(jnp.zeros_like, self.state_adv_clfs.params)
         n_adv_steps = 0
         n_ae_steps = 0
         for step in tbar:
             is_adv_step = (step + 1) % self.config.adv_step_interval == 0
-            is_logging_step = step % 1 == 0
+            is_logging_step = step % 1000 == 0
             train_batch, condition = self.generate_batch(datamodule, "train")
 
             valid_batch, _ = (
@@ -167,14 +166,11 @@ class ComPertTrainer(AbstractTrainer):
                 )
                 n_ae_steps += 1
 
-            train_conditions.append(condition)
-
             if is_logging_step:
                 self.update_logs(current_logs, logs, tbar, is_adv_step)
         self.metrics["ott-logs"] = logs
-        self.metrics["train_conditions"] = train_conditions
 
-        return self.state_autoencoder, self.adv_clfs, logs
+        return self.state_autoencoder, self.state_adv_clfs, logs
 
     def _get_step_fn(self) -> Callable:
         """Create a one step training and evaluation function."""
@@ -343,7 +339,7 @@ class ComPertTrainer(AbstractTrainer):
             """Step function."""
 
             # Step functions booleans
-            is_logging_step = step % 1 == 0
+            is_logging_step = step % 1000 == 0
             is_adv_step = (step + 1) % self.config.adv_step_interval == 0
             is_gradient_acc_step = (
                 n_specific_steps + 1
@@ -438,7 +434,7 @@ class ComPertTrainer(AbstractTrainer):
                         adv_drugs_grad_penalty=jnp.array([0]),
                         train=False,
                     )
-            current_logs["eval"] = current_eval_logs
+                    current_logs["eval"] = current_eval_logs
 
             # Accumulate gradients
             grads = tree_map(lambda g, step_g: g + step_g, grads, step_grads)
@@ -485,6 +481,8 @@ class ComPertTrainer(AbstractTrainer):
     def update_logs(self, current_logs, logs, tbar, is_adv_step):
         # store and print metrics if logging step
         for log_key in current_logs:
+            if not isinstance(current_logs[log_key], dict):
+                continue
             for metric_key in current_logs[log_key]:
                 logs[log_key][metric_key].append(current_logs[log_key][metric_key])
 
@@ -492,16 +490,16 @@ class ComPertTrainer(AbstractTrainer):
         if not isinstance(tbar, range):
             if not is_adv_step:
                 postfix_str = (
-                    f"reconstruction_loss: {current_logs['eval']['reconstruction_loss']:.4f}, "
-                    f"total_ae_loss: {current_logs['eval']['total_ae_loss']:.4f}, "
-                    f"adv_drug_loss: {current_logs['eval']['adv_drug_loss']:.4f}, "
-                    f"adv_cov_loss: {current_logs['eval']['adv_cov_loss']:.4f}"
+                    f"reconstruction_loss: {current_logs['train']['reconstruction_loss']:.4f}, "
+                    f"total_ae_loss: {current_logs['train']['total_ae_loss']:.4f}, "
+                    f"adv_drug_loss: {current_logs['train']['adv_drug_loss']:.4f}, "
+                    f"adv_cov_loss: {current_logs['train']['adv_cov_loss']:.4f}"
                 )
             else:
                 postfix_str = (
-                    f"adv_drug_loss: {current_logs['eval']['adv_drug_loss']:.4f}, "
-                    f"adv_cov_loss: {current_logs['eval']['adv_cov_loss']:.4f}, "
-                    f"total_adv_loss: {current_logs['eval']['total_adv_loss']:.4f}"
+                    f"adv_drug_loss: {current_logs['train']['adv_drug_loss']:.4f}, "
+                    f"adv_cov_loss: {current_logs['train']['adv_cov_loss']:.4f}, "
+                    f"total_adv_loss: {current_logs['train']['total_adv_loss']:.4f}"
                 )
             tbar.set_postfix_str(postfix_str)
 
