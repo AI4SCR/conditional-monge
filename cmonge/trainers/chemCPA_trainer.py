@@ -179,7 +179,6 @@ class ComPertTrainer(AbstractTrainer):
             n = 25  # Logs after n grad steps of AE and ADV
             is_logging_step = (step + 1) % (self.config.grad_acc_steps * 2 * n) == 0
             is_adv_step = (step + 1) % self.config.adv_step_interval == 0
-
             train_batch, condition = self.generate_batch(datamodule, "train")
 
             valid_batch, _ = (
