@@ -131,8 +131,10 @@ class ComPertTrainer(AbstractTrainer):
         n_adv_steps = 0
         n_ae_steps = 0
         for step in tbar:
+            # Step functions booleans
+            is_logging_step = step % 100 == 0
             is_adv_step = (step + 1) % self.config.adv_step_interval == 0
-            is_logging_step = step % 1000 == 0
+
             train_batch, condition = self.generate_batch(datamodule, "train")
 
             valid_batch, _ = (
@@ -142,25 +144,33 @@ class ComPertTrainer(AbstractTrainer):
             )
 
             if is_adv_step:
+                is_gradient_acc_step = (
+                    n_adv_steps + 1
+                ) % self.config.grad_acc_steps == 0
                 self.state_adv_clfs, adv_grads, current_logs = self.step_fn(
                     self.state_adv_clfs,
                     grads=adv_grads,
                     train_batch=train_batch,
                     valid_batch=valid_batch,
-                    step=step,
-                    n_specific_steps=n_adv_steps,
+                    is_adv_step=is_adv_step,
+                    is_gradient_acc_step=is_gradient_acc_step,
+                    is_logging_step=is_logging_step,
                     n_train_contexts=train_batch["num_contexts"],
                     n_valid_contexts=valid_batch["num_contexts"],
                 )
                 n_adv_steps += 1
             else:
+                is_gradient_acc_step = (
+                    n_ae_steps + 1
+                ) % self.config.grad_acc_steps == 0
                 self.state_autoencoder, ae_grads, current_logs = self.step_fn(
                     self.state_autoencoder,
                     grads=ae_grads,
                     train_batch=train_batch,
                     valid_batch=valid_batch,
-                    step=step,
-                    n_specific_steps=n_ae_steps,
+                    is_adv_step=is_adv_step,
+                    is_gradient_acc_step=is_gradient_acc_step,
+                    is_logging_step=is_logging_step,
                     n_train_contexts=train_batch["num_contexts"],
                     n_valid_contexts=valid_batch["num_contexts"],
                 )
@@ -168,6 +178,11 @@ class ComPertTrainer(AbstractTrainer):
 
             if is_logging_step:
                 self.update_logs(current_logs, logs, tbar, is_adv_step)
+
+            if step == 0:
+                jax.profiler.save_device_memory_profile("memory.prof")
+            elif step == 101:
+                jax.profiler.save_device_memory_profile("memory1001.prof")
         self.metrics["ott-logs"] = logs
 
         return self.state_autoencoder, self.state_adv_clfs, logs
@@ -325,25 +340,19 @@ class ComPertTrainer(AbstractTrainer):
 
             return drug_pred.sum(), batch_stats
 
-        @functools.partial(jax.jit, static_argnums=[4, 5, 6, 7])
+        @functools.partial(jax.jit, static_argnums=[4, 5, 6, 7, 8])
         def step_fn(
             state_neural_net: train_state.TrainState,
             grads: frozen_dict.FrozenDict,
             train_batch: Dict[str, jnp.ndarray],
             valid_batch: Optional[Dict[str, jnp.ndarray]],
-            step: int,
-            n_specific_steps: int,
+            is_logging_step: bool,
+            is_adv_step: bool,
+            is_gradient_acc_step: bool,
             n_train_contexts: int = 2,
             n_valid_contexts: int = 2,
         ) -> Tuple[train_state.TrainState, frozen_dict.FrozenDict, Dict[str, float]]:
             """Step function."""
-
-            # Step functions booleans
-            is_logging_step = step % 1000 == 0
-            is_adv_step = (step + 1) % self.config.adv_step_interval == 0
-            is_gradient_acc_step = (
-                n_specific_steps + 1
-            ) % self.config.grad_acc_steps == 0
 
             # compute loss and gradients
             if not is_adv_step:
