@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any, Dict
 
 import jax.numpy as jnp
-import pandas as pd
 import optax
+import pandas as pd
 import yaml
 from dotmap import DotMap
 from flax import linen as nn
