@@ -1,5 +1,7 @@
 import collections
 import functools
+import yaml
+import json
 from functools import partial
 from pathlib import Path
 from typing import Callable, Dict, Iterator, Optional, Tuple
@@ -19,7 +21,12 @@ from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA
 from cmonge.models.embedding import embed_factory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
-from cmonge.utils import create_or_update_logfile, optim_factory
+from cmonge.utils import (
+    create_or_update_logfile,
+    optim_factory,
+    load_config,
+    jax_serializer,
+)
 from cmonge.metrics import r2
 
 
@@ -30,6 +37,7 @@ class ComPertTrainer(AbstractTrainer):
         logger_path: Path,
         config: DotMap,
         datamodule: ConditionalDataModule,
+        config_path: Path,
     ) -> None:
 
         super().__init__(jobid, logger_path)
@@ -39,7 +47,12 @@ class ComPertTrainer(AbstractTrainer):
         self.key = jax.random.PRNGKey(self.config.seed)
         self.num_train_iters = self.config.num_train_iters
         self.split_dose = self.config.embedding.get("split_dose", True)
+        self.load_from_ckpt = self.config.checkpointing_args.get(
+            "load_from_ckpt", False
+        )
         self.init_model(datamodule=datamodule)
+        self.config_path = config_path
+        self.logger_path = logger_path
 
     def init_model(self, datamodule: ConditionalDataModule):
         # Initial drug embedding
@@ -105,34 +118,59 @@ class ComPertTrainer(AbstractTrainer):
         self.adv_clfs = AdversarialCPAModule(**self.config.adversary)
 
         # setup training states and step functions
-        # self.step_fn = self._get_step_fn()
         self.key, rng1, rng2 = jax.random.split(self.key, 3)
         self.state_autoencoder = self.autoencoder.create_train_state(rng1, ae_optimizer)
         self.state_adv_clfs = self.adv_clfs.create_train_state(
             rng2, adv_drugs_optimizer, self.config.ae.encoder_hidden_dims[-1]
         )
 
-        # autoencoder, doser, drug embedding encoder and coveriate embedders all included in autoencoder optimization
-        # Then adversary covariates and adversary drugs are one optimizer
+        # autoencoder, doser, drug embedding encoder and coveriate embedders all
+        # included in autoencoder optimization.
+        # The adversary covariates and adversary drugs are one optimizer
 
         self.step_fn = self._get_step_fn()
 
+        if self.load_from_ckpt:
+            logger.info(
+                f"Resuming training from {self.config.checkpointing_args.checkpoint_dir}"
+            )
+            self._load_ckpt(self.config.checkpointing_args.checkpoint_dir)
+
     def train(self, datamodule: ConditionalDataModule):
-        logs = collections.defaultdict(lambda: collections.defaultdict(list))
+        if self.load_from_ckpt:
+            with open(self.logger_path, "r") as f:
+                res = json.load(f)
+            logs = res["logs"]
+        else:
+            logs = collections.defaultdict(lambda: collections.defaultdict(list))
         try:
             from tqdm import trange
 
-            tbar = trange(self.num_train_iters, leave=True)
+            tbar = trange(
+                self.state_autoencoder.step * 2 * self.config.grad_acc_steps,
+                self.num_train_iters,
+                leave=True,
+            )
         except ImportError:
-            tbar = range(self.num_train_iters)
+            tbar = range(
+                self.state_autoencoder.step * 2 * self.config.grad_acc_steps,
+                self.num_train_iters,
+            )
 
         ae_grads = tree_map(jnp.zeros_like, self.state_autoencoder.params)
         adv_grads = tree_map(jnp.zeros_like, self.state_adv_clfs.params)
-        n_adv_steps = 0
-        n_ae_steps = 0
-        for step in tbar:
+        n_adv_steps = self.state_adv_clfs.step * self.config.grad_acc_steps
+        n_ae_steps = self.state_autoencoder.step * self.config.grad_acc_steps
+
+        logger.info(
+            f"Starting training with AE steps {n_ae_steps} and ADV steps {n_adv_steps}"
+        )
+        logger.info(
+            f"Fist step should be: {self.state_autoencoder.step * 2 * self.config.grad_acc_steps}"
+        )
+        for step in tbar:  # Make this start at prev_step
             # Step functions booleans
-            is_logging_step = step % 100 == 0
+            is_logging_step = (step + 1) % 1000 == 0
             is_adv_step = (step + 1) % self.config.adv_step_interval == 0
 
             train_batch, condition = self.generate_batch(datamodule, "train")
@@ -177,12 +215,23 @@ class ComPertTrainer(AbstractTrainer):
                 n_ae_steps += 1
 
             if is_logging_step:
-                self.update_logs(current_logs, logs, tbar, is_adv_step)
+                if step > 0:
+                    assert self.state_adv_clfs.step == self.state_autoencoder.step
+                    self.update_logs(current_logs, logs, tbar, is_adv_step)
+                    self.save_checkpoint(self.config.checkpointing_args.checkpoint_dir)
+                    self.config.checkpointing_args.load_from_ckpt = True
 
-            if step == 0:
-                jax.profiler.save_device_memory_profile("memory.prof")
-            elif step == 101:
-                jax.profiler.save_device_memory_profile("memory1001.prof")
+                    config = load_config(self.config_path)
+                    config.model = self.config
+                    config.data.seed = int(self.datamodule.key[0])
+
+                    with self.config_path.open("w") as f:
+                        yaml.dump(config.toDict(), f, default_flow_style=False)
+
+                    to_log = {"experiments": [], "logs": logs}
+                    with self.logger_path.open("w") as f:
+                        json.dump(to_log, f, indent=4, default=jax_serializer)
+
         self.metrics["ott-logs"] = logs
 
         return self.state_autoencoder, self.state_adv_clfs, logs
@@ -659,6 +708,16 @@ class ComPertTrainer(AbstractTrainer):
         save_args = save_args_from_target(adv_ckpt)
         checkpointer.save(
             Path(path) / "adv_clfs", adv_ckpt, save_args=save_args, force=True
+        )
+
+    def _load_ckpt(self, ckpt_path):
+        checkpointer = PyTreeCheckpointer()
+        self.state_autoencoder = checkpointer.restore(
+            Path(ckpt_path) / "autoencoder", item=self.state_autoencoder
+        )
+        checkpointer = PyTreeCheckpointer()
+        self.state_adv_clfs = checkpointer.restore(
+            Path(ckpt_path) / "adv_clfs", item=self.state_adv_clfs
         )
 
     @classmethod
