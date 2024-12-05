@@ -77,6 +77,12 @@ class ConditionalDataModule:
             if len(loader.target_test_cells) > 0:
                 self.test_conditions.append(cond)
 
+        self.type_to_conditions = {
+            "train": self.train_conditions,
+            "valid": self.valid_conditions,
+            "test": self.test_conditions,
+        }
+
     def setup_single_loader(self, condition: str):
         """Iitializes a loader instance for a single condition."""
         logger.info(f"Setting up datamodules for {condition}")
@@ -124,16 +130,11 @@ class ConditionalDataModule:
 
     def get_loaders_by_type(self, split_type: str):
         assert split_type in ["train", "valid", "test"]
-        type_to_conditions = {
-            "train": self.train_conditions,
-            "valid": self.valid_conditions,
-            "test": self.test_conditions,
-        }
 
         cond_to_loaders = {
             cond: loader.get_loaders_by_type(split_type)
             for cond, loader in self.loaders.items()
-            if cond in type_to_conditions[split_type]
+            if cond in self.type_to_conditions[split_type]
         }
         if self.data_config.ae:
 

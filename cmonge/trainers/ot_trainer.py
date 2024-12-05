@@ -271,7 +271,7 @@ class NeuralDualTrainer(AbstractTrainer):
 
 def gaussian_loss(pred: jnp.ndarray, target: jnp.ndarray, var: jnp.ndarray, eps=1e-5):
 
-    var = jnp.clip(var, eps, None)
+    var = jnp.clip(var, eps, None)  # array, min, max
     term1 = jnp.log(var)
     term2 = jax.lax.integer_pow((pred - target), 2) / var
     final = (term1 + term2) / 2
@@ -287,9 +287,14 @@ def cross_entropy(labels: jnp.ndarray, probs: jnp.ndarray):
     return optax.softmax_cross_entropy_with_integer_labels(probs, labels).mean()
 
 
+def focal_loss(labels, logits, alpha=0.3, gamma=3):
+    return optax.sigmoid_focal_loss(logits, labels, alpha=alpha, gamma=gamma).mean()
+
+
 loss_factory = {
     "sinkhorn": fitting_loss,
     "gaussian": gaussian_loss,
     "crossentropy": cross_entropy,
+    "focal": focal_loss,
 }
 regularizer_factory = {"monge": regularizer}
