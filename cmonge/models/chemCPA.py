@@ -1,5 +1,4 @@
 from typing import Any, Callable, Iterable, Sequence, Tuple, Union
-
 import flax.linen as nn
 import jax.numpy as jnp
 import optax
@@ -33,7 +32,7 @@ class MLPchemCPA(nn.Module):
             x = w(x)
             if (
                 i < len(self.hidden_dims) - 1
-            ):  # Don't add activation and batchon last layer
+            ):  # Don't add activation and batch on last layer
                 if self.batch_norm:
                     bn = nn.BatchNorm()
                     x = bn(x, use_running_average=not train)
@@ -90,6 +89,10 @@ class AutoEncoderchemCPA(nn.Module):
             self.cov_embed_enc_dims[0], self.cov_embed_enc_dims[1]
         )
         self.doser = MLPchemCPA(self.doser_hidden_dims)
+        self.degs_predictor = MLPchemCPA(
+            [self.encoder_hidden_dims[-1], int(self.decoder_hidden_dims[-1] / 2)],
+            batch_norm=True,
+        )
 
     @nn.compact
     def __call__(self, x, c, covs, n_contexts: int = None, train: bool = True):
@@ -99,21 +102,26 @@ class AutoEncoderchemCPA(nn.Module):
             c (jnp.ndarray): The context of shape bs x dim_cond with possibly different modalities
                 concatenated, as can be specified via context_entity_bonds.
             n_contexts (int): Number of contexts in c, contexts bounds should be defined on init in `context_entity_bonds`
-            covs (??): covariate index to be encoded and added to the latent vector
+            covs: covariate index to be encoded and added to the latent vector
         Returns:
             jnp.ndarray: _description_
         """
 
         # Chunk the inputs
         drugs = c[:, :-1]
+        log_dose = c[:, -1]
+        dose = jnp.exp(log_dose)  # RDkit embedding takes log of dose
+        dose = round(dose / 10000, 5)  # chemCPA uses smaller dose values
+        c = jnp.concatenate([drugs, jnp.atleast_2d(dose).T], axis=1)
         latent_drugs = self.drug_embed_enc(drugs, train)
-        latent_dosages = self.doser(c, train).squeeze(1)
+        latent_dosages = self.doser(c, train).reshape(-1)
         drug_embedding = jnp.einsum("i,ij->ij", latent_dosages, latent_drugs)
 
         cov_embedding = self.cov_embed_enc(covs)
 
         latent_basal = self.encoder(x, train)
         latent_treated = latent_basal + drug_embedding + cov_embedding
+
         x_hat = self.decoder(latent_treated, train)
         dim = x_hat.shape[1] // 2
         mean = x_hat[:, :dim]
@@ -122,7 +130,9 @@ class AutoEncoderchemCPA(nn.Module):
 
         cell_drug_embedding = jnp.concatenate([cov_embedding, drug_embedding], axis=1)
 
-        return x_hat, cell_drug_embedding, latent_basal
+        degs_pred = self.degs_predictor(cell_drug_embedding, train)
+
+        return x_hat, cell_drug_embedding, latent_basal, degs_pred
 
     def create_train_state(
         self,
