@@ -65,8 +65,10 @@ class ConditionalCPADataModule(ConditionalDataModule):
                     if self.ood_condition_config
                     else []
                 )
-            drugs = sorted(drugs + ood_drugs + control)
+            drugs = sorted(drugs + ood_drugs) + control
             self.data_config.parent_drug_to_idx = {d: i for i, d in enumerate(drugs)}
+
+            logger.info(f"drug to idx mapping {self.data_config.parent_drug_to_idx}")
 
             cell_lines = sorted(self.adata.obs["cell_type"].astype(str).unique())
             self.data_config.parent_celltype_to_idx = {

@@ -65,8 +65,6 @@ class SciPlexCPAModule(SciPlexModule):
         self.splitter()
         self.reducer()
 
-
-
     def preprocesser(self) -> None:
         """Normalizes and log transofrms the data."""
         if not isinstance(self.adata.X, np.ndarray):
@@ -82,6 +80,15 @@ class SciPlexCPAModule(SciPlexModule):
             logger.warning(
                 "Parent drug to idx not provided, drug index will always be 0"
             )
+            self.drug_idx = 0
+        else:
+            # Getting drug based on condition in case condition also contains dose
+            drug = [
+                k for k in self.parent_drug_to_idx.keys() if k in self.drug_condition
+            ][0]
+            self.drug_idx = self.parent_drug_to_idx[drug]
+
+        self.degs_bool = [g in self.marker_genes for g in self.adata.var_names]
 
     def get_model_inputs_from_adata(self, adata, cell_idx, condition):
         X = adata[cell_idx, :].X
@@ -95,22 +102,21 @@ class SciPlexCPAModule(SciPlexModule):
             )
         else:
             cell_type = jnp.asarray([0] * len(cell_idx), dtype="int32")
-        if not self.parent_drug_to_idx:
-            drug_idx = jnp.asarray([0] * len(cell_idx), dtype="int32")
-        else:
-            # Getting drug based on condition in case condition also contains dose
-            drug = [k for k in self.parent_drug_to_idx.keys() if k in condition][0]
-            drug_idx = jnp.asarray(
-                [self.parent_drug_to_idx[drug]] * len(cell_idx), dtype="int32"
-            )
 
-        return X, cell_type, drug_idx
+        drug_idx = jnp.asarray([self.drug_idx] * len(cell_idx), dtype="int32")
+
+        degs = jnp.asarray(
+            [self.degs_bool for i in range(len(cell_idx))], dtype="float32"
+        )
+
+        return X, cell_type, drug_idx, degs
 
     def get_loaders_by_type(
         self, split_type: str, batch_size: Optional[int] = None
     ) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
         """Convert adata object into control and target iterators,
         subset based on the split type (train/valid/test)."""
+
         if split_type == "train":
             control_cells = self.control_train_cells
             target_cells = self.target_train_cells
@@ -123,11 +129,15 @@ class SciPlexCPAModule(SciPlexModule):
         else:
             raise ValueError("Invalid split, split_type should be train/valid/test.")
 
-        control, control_celltypes, control_drug_idx = self.get_model_inputs_from_adata(
-            self.control_adata, control_cells, self.control_condition
+        control, control_celltypes, control_drug_idx, degs = (
+            self.get_model_inputs_from_adata(
+                self.control_adata, control_cells, self.control_condition
+            )
         )
-        target, target_celltypes, target_drug_idx = self.get_model_inputs_from_adata(
-            self.target_adata, target_cells, self.drug_condition
+        target, target_celltypes, target_drug_idx, degs = (
+            self.get_model_inputs_from_adata(
+                self.target_adata, target_cells, self.drug_condition
+            )
         )
 
         if self.ae:
@@ -147,10 +157,10 @@ class SciPlexCPAModule(SciPlexModule):
                 batch_size = self.batch_size
             loaders = (
                 self.sampler_iter(
-                    [control, control_celltypes, control_drug_idx], batch_size, k1
+                    [control, control_celltypes, control_drug_idx, degs], batch_size, k1
                 ),
                 self.sampler_iter(
-                    [target, target_celltypes, target_drug_idx], batch_size, k2
+                    [target, target_celltypes, target_drug_idx, degs], batch_size, k2
                 ),
             )
         return loaders

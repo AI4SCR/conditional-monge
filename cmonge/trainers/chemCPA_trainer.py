@@ -1,5 +1,4 @@
 import collections
-import functools
 import yaml
 import json
 from functools import partial
@@ -11,14 +10,13 @@ import jax.numpy as jnp
 import optax
 from dotmap import DotMap
 from flax.core import frozen_dict
-from flax.training import train_state
 from flax.training.orbax_utils import save_args_from_target
 from jax.tree_util import tree_map
 from loguru import logger
 from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
-from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA
+from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA, TrainState
 from cmonge.models.embedding import embed_factory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
 from cmonge.utils import (
@@ -78,18 +76,22 @@ class ComPertTrainer(AbstractTrainer):
         self.loss_adversary_covariates = partial(
             loss_adversary_covariates_fn, **self.config.loss_adversary_covariates.kwargs
         )
+        loss_degs_fn = loss_factory[self.config.loss_degs.name]
+        self.loss_degs = partial(loss_degs_fn, **self.config.loss_degs.kwargs)
 
         # setup optimizer and scheduler
         opt_fn = optim_factory[self.config.ae_optim.name]
         ae_lr_scheduler = optax.piecewise_constant_schedule(
             init_value=self.config.ae_optim.lr,
             boundaries_and_scales={
-                0 + i * self.config.ae_optim.step_size: i * self.config.ae_optim.gamma
+                0 + i * self.config.ae_optim.step_size: self.config.ae_optim.gamma**i
                 for i in range(self.num_train_iters)
                 if i * self.config.ae_optim.step_size < self.num_train_iters
             },
         )
-        ae_optimizer = opt_fn(ae_lr_scheduler, **self.config.ae_optim.kwargs)
+        ae_optimizer = opt_fn(
+            ae_lr_scheduler, weight_decay=self.config.ae_optim.weight_decay
+        )
 
         opt_fn = optim_factory[self.config.adversary_optim.name]
         adv_lr_scheduler = optax.piecewise_constant_schedule(
@@ -97,14 +99,14 @@ class ComPertTrainer(AbstractTrainer):
             boundaries_and_scales={
                 0
                 + i
-                * self.config.adversary_optim.step_size: i
-                * self.config.adversary_optim.gamma
+                * self.config.adversary_optim.step_size: self.config.adversary_optim.gamma
+                ** i
                 for i in range(self.num_train_iters)
                 if i * self.config.adversary_optim.step_size < self.num_train_iters
             },
         )
         adv_drugs_optimizer = opt_fn(
-            adv_lr_scheduler, **self.config.adversary_optim.kwargs
+            adv_lr_scheduler, weight_decay=self.config.adversary_optim.weight_decay
         )
 
         # setup models
@@ -143,17 +145,23 @@ class ComPertTrainer(AbstractTrainer):
             logs = res["logs"]
         else:
             logs = collections.defaultdict(lambda: collections.defaultdict(list))
+
+        start_step = (
+            0
+            if self.state_autoencoder.step == 0
+            else self.state_autoencoder.step * self.config.grad_acc_steps * 2
+        )
         try:
             from tqdm import trange
 
             tbar = trange(
-                self.state_autoencoder.step * 2 * self.config.grad_acc_steps,
+                start_step,
                 self.num_train_iters,
                 leave=True,
             )
         except ImportError:
             tbar = range(
-                self.state_autoencoder.step * 2 * self.config.grad_acc_steps,
+                start_step,
                 self.num_train_iters,
             )
 
@@ -165,12 +173,11 @@ class ComPertTrainer(AbstractTrainer):
         logger.info(
             f"Starting training with AE steps {n_ae_steps} and ADV steps {n_adv_steps}"
         )
-        logger.info(
-            f"Fist step should be: {self.state_autoencoder.step * 2 * self.config.grad_acc_steps}"
-        )
-        for step in tbar:  # Make this start at prev_step
+        logger.info(f"Fist step should be: {start_step}")
+        for step in tbar:
             # Step functions booleans
-            is_logging_step = (step + 1) % 1000 == 0
+            n = 25  # Logs after n grad steps of AE and ADV
+            is_logging_step = (step + 1) % (self.config.grad_acc_steps * 2 * n) == 0
             is_adv_step = (step + 1) % self.config.adv_step_interval == 0
 
             train_batch, condition = self.generate_batch(datamodule, "train")
@@ -180,6 +187,9 @@ class ComPertTrainer(AbstractTrainer):
                 if not is_logging_step
                 else self.generate_batch(datamodule, "valid")
             )
+
+            # old_ae_params = self.state_autoencoder.params
+            # old_adv_params = self.state_adv_clfs.params
 
             if is_adv_step:
                 is_gradient_acc_step = (
@@ -217,9 +227,9 @@ class ComPertTrainer(AbstractTrainer):
             if is_logging_step:
                 if step > 0:
                     assert self.state_adv_clfs.step == self.state_autoencoder.step
-                    self.update_logs(current_logs, logs, tbar, is_adv_step)
                     self.save_checkpoint(self.config.checkpointing_args.checkpoint_dir)
                     self.config.checkpointing_args.load_from_ckpt = True
+                    self.update_logs(current_logs, logs, tbar, is_adv_step)
 
                     config = load_config(self.config_path)
                     config.model = self.config
@@ -238,6 +248,28 @@ class ComPertTrainer(AbstractTrainer):
 
     def _get_step_fn(self) -> Callable:
         """Create a one step training and evaluation function."""
+
+        def compute_ae_loss(batch, x_hat):
+            # get mean and var for predicted gex
+            dim = x_hat.shape[1] // 2
+            mean = x_hat[:, :dim]
+            var = x_hat[:, dim:]
+
+            # compute the loss
+            reconstruction_loss = self.reconstruction_loss(
+                pred=mean, target=batch["target"], var=var
+            )
+
+            return reconstruction_loss
+
+        def compute_degs_loss(labels, logits):
+            loss = self.loss_degs(
+                labels=labels,
+                logits=logits,
+                alpha=self.config.loss_degs.alpha,
+                gamma=self.config.loss_degs.alpha,
+            )
+            return loss
 
         def ae_loss_fn(
             params: frozen_dict.FrozenDict,
@@ -261,7 +293,7 @@ class ComPertTrainer(AbstractTrainer):
                 mutable=["batch_stats"] if train else False,
             )
 
-            (x_hat, cell_drug_embedding, latent_basal), batch_stats = (
+            (x_hat, cell_drug_embedding, latent_basal, degs_pred), batch_stats = (
                 outs if train else (outs, None)
             )
             outs = self.adv_clfs.apply(
@@ -275,15 +307,7 @@ class ComPertTrainer(AbstractTrainer):
             )
 
             (cov_pred, drug_pred), batch_stats = outs if train else (outs, None)
-            # get mean and var for predicted gex
-            dim = x_hat.shape[1] // 2
-            mean = x_hat[:, :dim]
-            var = x_hat[:, dim:]
 
-            # compute the loss
-            reconstruction_loss = self.reconstruction_loss(
-                pred=mean, target=batch["target"], var=var
-            )
             adv_drug_loss = self.loss_adversary_drugs(
                 labels=batch["target_didx"], probs=drug_pred
             )
@@ -291,10 +315,14 @@ class ComPertTrainer(AbstractTrainer):
                 labels=batch["target_ct"], probs=cov_pred
             )
 
+            reconstruction_loss = compute_ae_loss(batch=batch, x_hat=x_hat)
+            degs_loss = compute_degs_loss(batch["target_degs"], degs_pred)
+
             tot_loss = (
                 reconstruction_loss
                 - self.config.reg_adversary_drug * adv_drug_loss
                 - self.config.reg_adversary_cov * adv_cov_loss
+                + self.config.reg_degs_loss * degs_loss
             )
 
             # store training logs
@@ -303,6 +331,7 @@ class ComPertTrainer(AbstractTrainer):
                 "reconstruction_loss": reconstruction_loss,
                 "adv_drug_loss": adv_drug_loss,
                 "adv_cov_loss": adv_cov_loss,
+                "degs_loss": degs_loss,
             }
 
             return tot_loss, (loss_logs, batch_stats)
@@ -389,9 +418,9 @@ class ComPertTrainer(AbstractTrainer):
 
             return drug_pred.sum(), batch_stats
 
-        @functools.partial(jax.jit, static_argnums=[4, 5, 6, 7, 8])
+        @partial(jax.jit, static_argnums=[4, 5, 6, 7, 8])
         def step_fn(
-            state_neural_net: train_state.TrainState,
+            state_neural_net: TrainState,
             grads: frozen_dict.FrozenDict,
             train_batch: Dict[str, jnp.ndarray],
             valid_batch: Optional[Dict[str, jnp.ndarray]],
@@ -400,7 +429,7 @@ class ComPertTrainer(AbstractTrainer):
             is_gradient_acc_step: bool,
             n_train_contexts: int = 2,
             n_valid_contexts: int = 2,
-        ) -> Tuple[train_state.TrainState, frozen_dict.FrozenDict, Dict[str, float]]:
+        ) -> Tuple[TrainState, frozen_dict.FrozenDict, Dict[str, float]]:
             """Step function."""
 
             # compute loss and gradients
@@ -425,9 +454,10 @@ class ComPertTrainer(AbstractTrainer):
                         n_contexts=n_valid_contexts,
                         train=False,
                     )
+                    current_logs["eval"] = current_eval_logs
             else:
                 # map samples with the fitted map
-                (x_hat, cell_drug_embedding, latent_basal), batch_stats = (
+                (x_hat, cell_drug_embedding, latent_basal, degs_pred), batch_stats = (
                     self.autoencoder.apply(
                         {"params": self.state_autoencoder.params},
                         x=train_batch["target"],
@@ -471,16 +501,37 @@ class ComPertTrainer(AbstractTrainer):
                 # logging step
                 current_logs = {"train": current_train_logs, "eval": {}}
                 if is_logging_step:
-                    x_hat, cell_drug_embedding, latent_basal = self.autoencoder.apply(
-                        {
-                            "params": self.state_autoencoder.params,
-                            "batch_stats": self.state_autoencoder.batch_stats,
-                        },
-                        x=valid_batch["target"],
-                        c=valid_batch["condition"],
-                        covs=valid_batch["target_ct"],
-                        train=False,
-                        mutable=False,
+                    # Train ae loss
+                    reconstruction_loss = compute_ae_loss(
+                        batch=train_batch, x_hat=x_hat
+                    )
+                    degs_loss = compute_degs_loss(train_batch["target_degs"], degs_pred)
+
+                    tot_ae_loss = (
+                        reconstruction_loss
+                        - self.config.reg_adversary_drug
+                        * current_train_logs["adv_drug_loss"]
+                        - self.config.reg_adversary_cov
+                        * current_train_logs["adv_cov_loss"]
+                        + self.config.reg_degs_loss * degs_loss
+                    )
+                    current_logs["train"]["ae_loss"] = reconstruction_loss
+                    current_logs["train"]["degs_loss"] = degs_loss
+                    current_logs["train"]["total_ae_loss"] = tot_ae_loss
+
+                    # Evaluation step
+                    x_hat, cell_drug_embedding, latent_basal, degs_pred = (
+                        self.autoencoder.apply(
+                            {
+                                "params": self.state_autoencoder.params,
+                                "batch_stats": self.state_autoencoder.batch_stats,
+                            },
+                            x=valid_batch["target"],
+                            c=valid_batch["condition"],
+                            covs=valid_batch["target_ct"],
+                            train=False,
+                            mutable=False,
+                        )
                     )
                     _, (current_eval_logs, _) = adv_loss_fn(
                         params=state_neural_net.params,
@@ -492,6 +543,24 @@ class ComPertTrainer(AbstractTrainer):
                         adv_drugs_grad_penalty=jnp.array([0]),
                         train=False,
                     )
+
+                    # Also log AE loss
+                    reconstruction_loss = compute_ae_loss(
+                        batch=valid_batch, x_hat=x_hat
+                    )
+                    degs_loss = compute_degs_loss(valid_batch["target_degs"], degs_pred)
+                    tot_ae_loss = (
+                        reconstruction_loss
+                        - self.config.reg_adversary_drug
+                        * current_eval_logs["adv_drug_loss"]
+                        - self.config.reg_adversary_cov
+                        * current_eval_logs["adv_cov_loss"]
+                        + self.config.reg_degs_loss * degs_loss
+                    )
+                    current_eval_logs["ae_loss"] = reconstruction_loss
+                    current_eval_logs["degs_loss"] = degs_loss
+                    current_eval_logs["total_ae_loss"] = tot_ae_loss
+
                     current_logs["eval"] = current_eval_logs
 
             # Accumulate gradients
@@ -501,9 +570,9 @@ class ComPertTrainer(AbstractTrainer):
             if is_gradient_acc_step:
                 grads = tree_map(lambda g: g / self.config.grad_acc_steps, grads)
                 state_neural_net = state_neural_net.apply_gradients(grads=grads)
+                state_neural_net.replace(batch_stats=batch_stats)
                 # Reset gradients
                 grads = tree_map(jnp.zeros_like, grads)
-
             return state_neural_net, grads, current_logs
 
         return step_fn
@@ -514,22 +583,29 @@ class ComPertTrainer(AbstractTrainer):
         split_type: str,
     ) -> Dict[str, jnp.ndarray]:
         """Generate a batch of condition and samples."""
-        condition_to_loaders = datamodule.get_loaders_by_type(split_type)
         condition = datamodule.sample_condition(split_type)
+        condition_to_loaders = {
+            cond: loader.get_loaders_by_type(split_type)
+            for cond, loader in datamodule.loaders.items()
+            if (cond in datamodule.type_to_conditions[split_type]) and cond == condition
+        }  # Generate DL for sampled condition only
+
         loader_source, loader_target = condition_to_loaders[condition]
         embeddings, n_contexts = self.embedding_module(
             condition=condition, dose_split=self.split_dose
         )
-        source, source_cell_type, source_drug_idx = next(loader_source)
-        target, target_cell_type, target_drug_idx = next(loader_target)
+        source, source_cell_type, source_drug_idx, source_degs = next(loader_source)
+        target, target_cell_type, target_drug_idx, target_degs = next(loader_target)
         return (
             {
                 "source": source,
                 "source_ct": source_cell_type,
                 "source_didx": source_drug_idx,
+                "source_degs": source_degs,
                 "target": target,
                 "target_ct": target_cell_type,
                 "target_didx": target_drug_idx,
+                "target_degs": target_degs,
                 "condition": embeddings,
                 "num_contexts": n_contexts,
             },
@@ -557,7 +633,8 @@ class ComPertTrainer(AbstractTrainer):
                 postfix_str = (
                     f"adv_drug_loss: {current_logs['train']['adv_drug_loss']:.4f}, "
                     f"adv_cov_loss: {current_logs['train']['adv_cov_loss']:.4f}, "
-                    f"total_adv_loss: {current_logs['train']['total_adv_loss']:.4f}"
+                    f"total_adv_loss: {current_logs['train']['total_adv_loss']:.4f}, "
+                    f"total_ae_loss: {current_logs['train']['total_ae_loss']:.4f}"
                 )
             tbar.set_postfix_str(postfix_str)
 
@@ -567,7 +644,7 @@ class ComPertTrainer(AbstractTrainer):
         source, source_celltype, source_drugs = source
         target, target_celltype, target_drugs = target
 
-        x_hat, cell_drug_embedding, latent_basal = self.autoencoder.apply(
+        x_hat, cell_drug_embedding, latent_basal, degs_pred = self.autoencoder.apply(
             {
                 "params": self.state_autoencoder.params,
                 "batch_stats": self.state_autoencoder.batch_stats,
@@ -637,7 +714,6 @@ class ComPertTrainer(AbstractTrainer):
         ):
             self.metrics[split_type] = {}
             for cond, loader in cond_to_loaders.items():
-                logger.info(f"Evaluation started on {cond} {split_type}.")
                 cond_embedding, n_contexts = self.embedding_module(
                     cond, self.split_dose
                 )
