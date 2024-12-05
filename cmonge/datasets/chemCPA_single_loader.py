@@ -65,8 +65,6 @@ class SciPlexCPAModule(SciPlexModule):
         self.splitter()
         self.reducer()
 
-
-
     def preprocesser(self) -> None:
         """Normalizes and log transofrms the data."""
         if not isinstance(self.adata.X, np.ndarray):
@@ -118,6 +116,7 @@ class SciPlexCPAModule(SciPlexModule):
     ) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
         """Convert adata object into control and target iterators,
         subset based on the split type (train/valid/test)."""
+
         if split_type == "train":
             control_cells = self.control_train_cells
             target_cells = self.target_train_cells

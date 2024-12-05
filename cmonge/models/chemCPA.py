@@ -121,6 +121,7 @@ class AutoEncoderchemCPA(nn.Module):
 
         latent_basal = self.encoder(x, train)
         latent_treated = latent_basal + drug_embedding + cov_embedding
+
         x_hat = self.decoder(latent_treated, train)
         dim = x_hat.shape[1] // 2
         mean = x_hat[:, :dim]
