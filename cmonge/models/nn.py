@@ -305,9 +305,8 @@ class ConditionalPerturbationNetwork(ModelBase):
     dim_hidden: Sequence[int] = None
     dim_data: int = None
     dim_cond: int = None  # Full dimension of all context variables concatenated
-    # Same length as context_entity_bonds if embed_cond_equal is False
-    # (if True, first item is size of deep set layer, rest is ignored)
-    dim_cond_map: Iterable[int] = (50,)
+    # Same length as context_entity_bonds if embed_cond_equal is False (if True, first item is size of deep set layer, rest is ignored)
+    dim_cond_map: Iterable[int] = (50, 1)
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
@@ -326,15 +325,13 @@ class ConditionalPerturbationNetwork(ModelBase):
         """
         Args:
             x (jnp.ndarray): The input data of shape bs x dim_data
-            c (jnp.ndarray): The context of shape bs x dim_cond with
-                possibly different modalities
+            c (jnp.ndarray): The context of shape bs x dim_cond with possibly different modalities
                 concatenated, as can be specified via context_entity_bonds.
 
         Returns:
             jnp.ndarray: _description_
         """
         n_input = x.shape[-1]
-
         # Chunk the inputs
         contexts = [
             c[:, e[0] : e[1]]
@@ -355,12 +352,10 @@ class ConditionalPerturbationNetwork(ModelBase):
             dim_cond_map = self.dim_cond_map
 
         if not self.embed_cond_equal:
-            # Each context is processed by a different layer,
-            # good for combining modalities
-            assert len(self.context_entity_bonds) == len(dim_cond_map), (
-                f"Length of context entity bonds and context map sizes has to match: "
-                f"{self.context_entity_bonds} != {dim_cond_map}"
-            )
+            # Each context is processed by a different layer, good for combining modalities
+            assert len(self.context_entity_bonds) == len(
+                dim_cond_map
+            ), f"Length of context entity bonds and context map sizes has to match: {self.context_entity_bonds} != {dim_cond_map}"
 
             layers = [
                 nn.Dense(dim_cond_map[i], use_bias=True) for i in range(len(contexts))
