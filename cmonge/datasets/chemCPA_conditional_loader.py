@@ -5,9 +5,9 @@ import scanpy as sc
 from dotmap import DotMap
 from loguru import logger
 
+from cmonge.datasets import DataModuleFactory
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.datasets.single_loader import AbstractDataModule
-from cmonge.datasets import DataModuleFactory
 
 
 class ConditionalCPADataModule(ConditionalDataModule):

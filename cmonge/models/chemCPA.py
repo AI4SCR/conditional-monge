@@ -1,4 +1,5 @@
 from typing import Any, Callable, Iterable, Sequence, Tuple, Union
+
 import flax.linen as nn
 import jax.numpy as jnp
 import optax
