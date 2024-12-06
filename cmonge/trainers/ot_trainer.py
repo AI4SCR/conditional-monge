@@ -176,7 +176,7 @@ class AbstractTrainer(abc.ABC):
         create_or_update_logfile(self.logger_path, self.metrics)
 
 
-class MongeMapTrainer(AbstractTrainer):
+class MongeGapTrainer(AbstractTrainer):
     """Wrapper class for Monge Gap training."""
 
     def __init__(self, jobid: int, logger_path: Path, config: DotMap) -> None:
@@ -232,7 +232,7 @@ class MongeMapTrainer(AbstractTrainer):
         )
 
     def train(self, datamodule: AbstractDataModule) -> None:
-        """Trains a Monge Map estimator."""
+        """Trains a Monge Gap estimator."""
         logger.info("Training started")
         train_loader_source, train_loader_target = datamodule.train_dataloaders()
         valid_loader_source, valid_loader_target = datamodule.valid_dataloaders()
