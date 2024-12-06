@@ -1,4 +1,5 @@
 import abc
+import warnings
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, TypeVar
@@ -259,6 +260,17 @@ class MongeGapTrainer(AbstractTrainer):
         self.solver.state_neural_net = value
 
 
+class MongeMapTrainer(MongeGapTrainer):
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "MongeMapTrainer is deprecated and will be removed in a future release. "
+            "Please use MongeGapTrainer instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)
+
+
 class NeuralDualTrainer(AbstractTrainer):
     """Wrapper class for neural dual training."""
 
@@ -341,5 +353,4 @@ class NeuralDualTrainer(AbstractTrainer):
 
 
 loss_factory = {"sinkhorn": fitting_loss}
-regularizer_factory = {"monge": regularizer}
 regularizer_factory = {"monge": regularizer}
