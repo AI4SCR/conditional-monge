@@ -1,5 +1,4 @@
 import collections
-import yaml
 import json
 from functools import partial
 from pathlib import Path
@@ -8,6 +7,7 @@ from typing import Callable, Dict, Iterator, Optional, Tuple
 import jax
 import jax.numpy as jnp
 import optax
+import yaml
 from dotmap import DotMap
 from flax.core import frozen_dict
 from flax.training.orbax_utils import save_args_from_target
@@ -16,16 +16,16 @@ from loguru import logger
 from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
+from cmonge.metrics import r2
 from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA, TrainState
 from cmonge.models.embedding import embed_factory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
 from cmonge.utils import (
     create_or_update_logfile,
-    optim_factory,
-    load_config,
     jax_serializer,
+    load_config,
+    optim_factory,
 )
-from cmonge.metrics import r2
 
 
 class ComPertTrainer(AbstractTrainer):
