@@ -18,7 +18,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.metrics import r2
 from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA, TrainState
-from cmonge.models.embedding import embed_factory
+from cmonge.models.embedding import EmbeddingFactory
 from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
 from cmonge.utils import (
     create_or_update_logfile,
