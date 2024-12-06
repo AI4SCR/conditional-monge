@@ -27,7 +27,7 @@ def drug_signature(target: jnp.ndarray, transport: jnp.ndarray) -> float:
 
 
 def maximum_mean_discrepancy(
-        target: jnp.ndarray, transport: jnp.ndarray, gamma: float
+    target: jnp.ndarray, transport: jnp.ndarray, gamma: float
 ) -> float:
     """Calculates the maximum mean discrepancy between two measures."""
     xx = rbf_kernel(target, target, gamma)
@@ -58,7 +58,7 @@ def compute_scalar_mmd(
 
 
 def wasserstein_distance(
-        target: jnp.ndarray, transport: jnp.ndarray, epsilon: float = 0.1
+    target: jnp.ndarray, transport: jnp.ndarray, epsilon: float = 0.1
 ) -> float:
     """
     Calculates the Wasserstain distance between two measures
@@ -71,7 +71,7 @@ def wasserstein_distance(
 
 
 def fitting_loss(
-        target: jnp.ndarray, transport: jnp.ndarray, epsilon_fitting: float
+    target: jnp.ndarray, transport: jnp.ndarray, epsilon_fitting: float
 ) -> float:
     """Calculates the sinkhorn divergence between two measures."""
     out = sinkhorn_divergence(
