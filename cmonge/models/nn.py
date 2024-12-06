@@ -129,7 +129,9 @@ class PICNN(ICNN):
         # self layers for hidden state u, to update z, all ~0
         wu = []
         for odim in units + [1]:
-            _wu = nn.Dense(odim, use_bias=False, kernel_init=self.init_fn(self.init_std))
+            _wu = nn.Dense(
+                odim, use_bias=False, kernel_init=self.init_fn(self.init_std)
+            )
             wu.append(_wu)
         self.wu = wu
 
@@ -143,7 +145,9 @@ class PICNN(ICNN):
             u = self.act_fn(self.w[i](u))
             t_u = jax.nn.softplus(self.wzu[i - 1](u))
             z = self.act_fn(
-                self.wz[i - 1](jnp.multiply(z, t_u)) + self.wx[i](jnp.multiply(x, self.wxu[i](u))) + self.wu[i](u)
+                self.wz[i - 1](jnp.multiply(z, t_u))
+                + self.wx[i](jnp.multiply(x, self.wxu[i](u)))
+                + self.wu[i](u)
             )
 
         z = (
@@ -307,14 +311,18 @@ class ConditionalPerturbationNetwork(BasePotential):
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
-    embed_cond_equal: bool = False  # Whether all context variables should be treated as set or not
+    embed_cond_equal: bool = (
+        False  # Whether all context variables should be treated as set or not
+    )
     context_entity_bonds: Iterable[Tuple[int, int]] = (
         (0, 10),
         (0, 11),
     )  # Start/stop index per modality
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray, c: jnp.ndarray, num_contexts: int = 2) -> jnp.ndarray:  # noqa: D102
+    def __call__(
+        self, x: jnp.ndarray, c: jnp.ndarray, num_contexts: int = 2
+    ) -> jnp.ndarray:  # noqa: D102
         """
         Args:
             x (jnp.ndarray): The input data of shape bs x dim_data
@@ -328,10 +336,17 @@ class ConditionalPerturbationNetwork(BasePotential):
         n_input = x.shape[-1]
 
         # Chunk the inputs
-        contexts = [c[:, e[0] : e[1]] for i, e in enumerate(self.context_entity_bonds) if i < num_contexts]
+        contexts = [
+            c[:, e[0] : e[1]]
+            for i, e in enumerate(self.context_entity_bonds)
+            if i < num_contexts
+        ]
 
         # Backwards compatability for dim_cond_map
-        if not isinstance(self.dim_cond_map, Iterable) and self.dim_cond_map is not None:
+        if (
+            not isinstance(self.dim_cond_map, Iterable)
+            and self.dim_cond_map is not None
+        ):
             if not self.embed_cond_equal:
                 dim_cond_map = [self.dim_cond_map, 1]  # For sciplex backwards compat
             else:
@@ -347,8 +362,12 @@ class ConditionalPerturbationNetwork(BasePotential):
                 f"{self.context_entity_bonds} != {dim_cond_map}"
             )
 
-            layers = [nn.Dense(dim_cond_map[i], use_bias=True) for i in range(len(contexts))]
-            embeddings = [self.act_fn(layers[i](context)) for i, context in enumerate(contexts)]
+            layers = [
+                nn.Dense(dim_cond_map[i], use_bias=True) for i in range(len(contexts))
+            ]
+            embeddings = [
+                self.act_fn(layers[i](context)) for i, context in enumerate(contexts)
+            ]
             cond_embedding = jnp.concatenate(embeddings, axis=1)
         else:
             # We can process arbitrary number of contexts, all from the same modality,

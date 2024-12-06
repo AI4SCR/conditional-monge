@@ -72,7 +72,9 @@ class AbstractTrainer(abc.ABC):
         """Abstract property to set the checkpointed attribute."""
         pass
 
-    def save_checkpoint(self, path: Optional[Path] = None, config: Optional[DotMap] = None) -> None:
+    def save_checkpoint(
+        self, path: Optional[Path] = None, config: Optional[DotMap] = None
+    ) -> None:
         """Abstract method for saving model parameters to a pickle file.
 
         Args:
@@ -120,13 +122,17 @@ class AbstractTrainer(abc.ABC):
             Class object with restored weights.
         """
         try:
-            out_class = cls(jobid=jobid, logger_path=logger_path, config=config, *args, **kwargs)
+            out_class = cls(
+                jobid=jobid, logger_path=logger_path, config=config, *args, **kwargs
+            )
 
             if ckpt_path is None:
                 if len(config.checkpointing_path) > 0:
                     ckpt_path = config.checkpointing_path
                 else:
-                    logger.error("Provide checkpointing path either directly or through the model config")
+                    logger.error(
+                        "Provide checkpointing path either directly or through the model config"
+                    )
             checkpointer = PyTreeCheckpointer()
             out_class.model = checkpointer.restore(ckpt_path, item=out_class.model)
 
@@ -216,7 +222,9 @@ class MongeGapTrainer(AbstractTrainer):
 
         # setup optimizer and scheduler
         opt_fn = optim_factory[optim.name]
-        lr_scheduler = optax.cosine_decay_schedule(init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2)
+        lr_scheduler = optax.cosine_decay_schedule(
+            init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2
+        )
         optimizer = opt_fn(learning_rate=lr_scheduler, **optim.kwargs)
 
         # setup ott-jax solver
@@ -248,7 +256,9 @@ class MongeGapTrainer(AbstractTrainer):
 
     def transport(self, source: jnp.ndarray) -> jnp.ndarray:
         """Transports a batch of data using the learned model."""
-        return self.solver.state_neural_net.apply_fn({"params": self.solver.state_neural_net.params}, source)
+        return self.solver.state_neural_net.apply_fn(
+            {"params": self.solver.state_neural_net.params}, source
+        )
 
     @property
     def model(self) -> nn.Module:
@@ -299,11 +309,15 @@ class NeuralDualTrainer(AbstractTrainer):
             "method": "dual",
         }
         neural_f = ICNN(
-            dim_data=num_genes, dim_hidden=dim_hidden, gaussian_map_samples=(samples_source, samples_target)
+            dim_data=num_genes,
+            dim_hidden=dim_hidden,
+            gaussian_map_samples=(samples_source, samples_target),
         )
         neural_g = MLP(dim_hidden=dim_hidden)
 
-        lr_schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=num_train_iters, alpha=1e-2)
+        lr_schedule = optax.cosine_decay_schedule(
+            init_value=lr, decay_steps=num_train_iters, alpha=1e-2
+        )
         optimizer_f = optax.adamw(learning_rate=lr_schedule, b1=0.5, b2=0.5)
         optimizer_g = optax.adamw(learning_rate=lr_schedule, b1=0.9, b2=0.999)
 

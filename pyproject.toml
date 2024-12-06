@@ -70,5 +70,5 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
-line-length = 120
+line-length = 88
 lint.select = ["N8"]
