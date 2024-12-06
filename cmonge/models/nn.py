@@ -334,8 +334,6 @@ class ConditionalPerturbationNetwork(ModelBase):
             jnp.ndarray: _description_
         """
         n_input = x.shape[-1]
-<<<<<<< HEAD
-
         # Chunk the inputs
         contexts = [
             c[:, e[0] : e[1]]
@@ -354,13 +352,7 @@ class ConditionalPerturbationNetwork(ModelBase):
                 dim_cond_map = [self.dim_cond_map]
         else:
             dim_cond_map = self.dim_cond_map
-=======
-        # Chunk the inputs
-        contexts = [
-            c[:, e[0] : e[1]]
-            for i, e in enumerate(self.context_entity_bonds)
-            if i < num_contexts
-        ]
+
         if not self.embed_cond_equal:
             # Each context is processed by a different layer, good for combining modalities
             assert len(self.context_entity_bonds) == len(
@@ -374,7 +366,7 @@ class ConditionalPerturbationNetwork(ModelBase):
             embeddings = [
                 self.act_fn(layers[i](context)) for i, context in enumerate(contexts)
             ]
-
+            cond_embedding = jnp.concatenate(embeddings, axis=1)
         else:
             # We can process arbitrary number of contexts, all from the same modality,
             # via a permutation-invariant deep set layer.
@@ -386,10 +378,9 @@ class ConditionalPerturbationNetwork(ModelBase):
             layer = nn.Dense(self.dim_cond_maps[0], use_bias=True)
             embeddings = [self.act_fn(layer(context)) for context in contexts]
             # Average along stacked dimension (alternatives like summing are possible)
-            embeddings = [jnp.mean(jnp.stack(*embeddings), axis=0)]
+            cond_embedding = jnp.mean(jnp.stack(embeddings), axis=0)
 
-        z = jnp.concatenate((x, *embeddings), axis=1)
-
+        z = jnp.concatenate((x, cond_embedding), axis=1)
         if self.layer_norm:
             n = nn.LayerNorm()
             z = n(z)
@@ -408,7 +399,7 @@ class ConditionalPerturbationNetwork(ModelBase):
         **kwargs: Any,
     ) -> NeuralTrainState:
         """Create initial `TrainState`."""
-        c = jnp.ones((1, 1, self.dim_cond))  # (n_batch, n_embedding, embed_dim)
+        c = jnp.ones((1, self.dim_cond))  # (n_batch, embed_dim)
         x = jnp.ones((1, self.dim_data))  # (n_batch, data_dim)
         params = self.init(rng, x=x, c=c)["params"]
         return NeuralTrainState.create(
