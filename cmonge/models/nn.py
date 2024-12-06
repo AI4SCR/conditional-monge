@@ -374,7 +374,9 @@ class ConditionalPerturbationNetwork(BasePotential):
             # via a permutation-invariant deep set layer.
             sizes = [c.shape[-1] for c in contexts]
             if not len(set(sizes)) == 1:
-                raise ValueError(f"For embedding a set, all contexts need same length, not {sizes}")
+                raise ValueError(
+                    f"For embedding a set, all contexts need same length, not {sizes}"
+                )
             layer = nn.Dense(dim_cond_map[0], use_bias=True)
             embeddings = [self.act_fn(layer(context)) for context in contexts]
             # Average along stacked dimension (alternatives like summing are possible)
