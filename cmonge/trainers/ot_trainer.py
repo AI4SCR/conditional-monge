@@ -1,4 +1,5 @@
 import abc
+import warnings
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, TypeVar
@@ -11,8 +12,10 @@ from flax.training.orbax_utils import save_args_from_target
 from jax.lib import xla_bridge
 from loguru import logger
 from orbax.checkpoint import PyTreeCheckpointer
-from ott.solvers.nn import models, neuraldual
-from ott.tools import map_estimator
+from ott.neural.methods.monge_gap import MongeGapEstimator
+from ott.neural.methods.neuraldual import W2NeuralDual
+from ott.neural.networks.icnn import ICNN
+from ott.neural.networks.potentials import MLP
 
 from cmonge.datasets.single_loader import AbstractDataModule
 from cmonge.evaluate import (
@@ -180,7 +183,7 @@ class AbstractTrainer(abc.ABC):
         create_or_update_logfile(self.logger_path, self.metrics)
 
 
-class MongeMapTrainer(AbstractTrainer):
+class MongeGapTrainer(AbstractTrainer):
     """Wrapper class for Monge Gap training."""
 
     def __init__(self, jobid: int, logger_path: Path, config: DotMap) -> None:
@@ -215,7 +218,7 @@ class MongeMapTrainer(AbstractTrainer):
         regularizer = partial(regularizer_fn, **regularizer.kwargs)
 
         # setup neural network model
-        model = models.MLP(dim_hidden=dim_hidden, is_potential=False, act_fn=nn.gelu)
+        model = MLP(dim_hidden=dim_hidden, is_potential=False, act_fn=nn.gelu)
 
         # setup optimizer and scheduler
         opt_fn = optim_factory[optim.name]
@@ -225,7 +228,7 @@ class MongeMapTrainer(AbstractTrainer):
         optimizer = opt_fn(learning_rate=lr_scheduler, **optim.kwargs)
 
         # setup ott-jax solver
-        self.solver = map_estimator.MapEstimator(
+        self.solver = MongeGapEstimator(
             num_genes,
             fitting_loss=fitting_loss,
             regularizer=regularizer,
@@ -238,7 +241,7 @@ class MongeMapTrainer(AbstractTrainer):
         )
 
     def train(self, datamodule: AbstractDataModule) -> None:
-        """Trains a Monge Map estimator."""
+        """Trains a Monge Gap estimator."""
         logger.info("Training started")
         train_loader_source, train_loader_target = datamodule.train_dataloaders()
         valid_loader_source, valid_loader_target = datamodule.valid_dataloaders()
@@ -265,6 +268,17 @@ class MongeMapTrainer(AbstractTrainer):
     def model(self, value: nn.Module):
         """Setter for the model to be checkpointed."""
         self.solver.state_neural_net = value
+
+
+class MongeMapTrainer(MongeGapTrainer):
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "MongeMapTrainer is deprecated and will be removed in a future release. "
+            "Please use MongeGapTrainer instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)
 
 
 class NeuralDualTrainer(AbstractTrainer):
@@ -294,12 +308,12 @@ class NeuralDualTrainer(AbstractTrainer):
             "lr": lr,
             "method": "dual",
         }
-        neural_f = models.ICNN(
+        neural_f = ICNN(
             dim_data=num_genes,
             dim_hidden=dim_hidden,
             gaussian_map_samples=(samples_source, samples_target),
         )
-        neural_g = models.MLP(dim_hidden=dim_hidden)
+        neural_g = MLP(dim_hidden=dim_hidden)
 
         lr_schedule = optax.cosine_decay_schedule(
             init_value=lr, decay_steps=num_train_iters, alpha=1e-2
@@ -307,7 +321,7 @@ class NeuralDualTrainer(AbstractTrainer):
         optimizer_f = optax.adamw(learning_rate=lr_schedule, b1=0.5, b2=0.5)
         optimizer_g = optax.adamw(learning_rate=lr_schedule, b1=0.9, b2=0.999)
 
-        self.neural_dual_solver = neuraldual.W2NeuralDual(
+        self.neural_dual_solver = W2NeuralDual(
             num_genes,
             neural_f,
             neural_g,

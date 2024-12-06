@@ -3,8 +3,8 @@ import jax.numpy as jnp
 import numpy as np
 from ott.geometry import costs
 from ott.geometry.pointcloud import PointCloud
+from ott.neural.methods.monge_gap import monge_gap_from_samples
 from ott.solvers.linear import sinkhorn
-from ott.solvers.nn import losses
 from ott.tools.sinkhorn_divergence import sinkhorn_divergence
 from sklearn.metrics.pairwise import rbf_kernel
 
@@ -97,7 +97,7 @@ def regularizer(
 ):
     """Calculates the Monge Gap between two measures."""
     cost_fn = cost_factory[cost]
-    gap = losses.monge_gap_from_samples(
+    gap = monge_gap_from_samples(
         target,
         transport,
         cost_fn=cost_fn,
