@@ -3,8 +3,8 @@ import jax.numpy as jnp
 import numpy as np
 from ott.geometry import costs
 from ott.geometry.pointcloud import PointCloud
+from ott.neural.methods.monge_gap import monge_gap_from_samples
 from ott.solvers.linear import sinkhorn
-from ott.solvers.nn import losses
 from ott.tools.sinkhorn_divergence import sinkhorn_divergence
 from sklearn.metrics.pairwise import rbf_kernel
 
@@ -26,9 +26,7 @@ def drug_signature(target: jnp.ndarray, transport: jnp.ndarray) -> float:
     return float(jnp.linalg.norm(target_means - transport_means))
 
 
-def maximum_mean_discrepancy(
-    target: jnp.ndarray, transport: jnp.ndarray, gamma: float
-) -> float:
+def maximum_mean_discrepancy(target: jnp.ndarray, transport: jnp.ndarray, gamma: float) -> float:
     """Calculates the maximum mean discrepancy between two measures."""
     xx = rbf_kernel(target, target, gamma)
     xy = rbf_kernel(target, transport, gamma)
@@ -57,9 +55,7 @@ def compute_scalar_mmd(
     return float(np.mean(list(map(lambda x: safe_mmd(target, transport, x), gammas))))
 
 
-def wasserstein_distance(
-    target: jnp.ndarray, transport: jnp.ndarray, epsilon: float = 0.1
-) -> float:
+def wasserstein_distance(target: jnp.ndarray, transport: jnp.ndarray, epsilon: float = 0.1) -> float:
     """
     Calculates the Wasserstain distance between two measures
     using the Sinkhorn algorithm on the regularized OT formulation.
@@ -70,9 +66,7 @@ def wasserstein_distance(
     return ot.reg_ot_cost
 
 
-def fitting_loss(
-    target: jnp.ndarray, transport: jnp.ndarray, epsilon_fitting: float
-) -> float:
+def fitting_loss(target: jnp.ndarray, transport: jnp.ndarray, epsilon_fitting: float) -> float:
     """Calculates the sinkhorn divergence between two measures."""
     out = sinkhorn_divergence(
         PointCloud,
@@ -97,7 +91,7 @@ def regularizer(
 ):
     """Calculates the Monge Gap between two measures."""
     cost_fn = cost_factory[cost]
-    gap = losses.monge_gap_from_samples(
+    gap = monge_gap_from_samples(
         target,
         transport,
         cost_fn=cost_fn,

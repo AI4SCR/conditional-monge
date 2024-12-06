@@ -11,8 +11,10 @@ from flax.training.orbax_utils import save_args_from_target
 from jax.lib import xla_bridge
 from loguru import logger
 from orbax.checkpoint import PyTreeCheckpointer
-from ott.solvers.nn import models, neuraldual
-from ott.tools import map_estimator
+from ott.neural.methods.monge_gap import MongeGapEstimator
+from ott.neural.methods.neuraldual import W2NeuralDual
+from ott.neural.networks.icnn import ICNN
+from ott.neural.networks.potentials import MLP
 
 from cmonge.datasets.single_loader import AbstractDataModule
 from cmonge.evaluate import (
@@ -69,9 +71,7 @@ class AbstractTrainer(abc.ABC):
         """Abstract property to set the checkpointed attribute."""
         pass
 
-    def save_checkpoint(
-        self, path: Optional[Path] = None, config: Optional[DotMap] = None
-    ) -> None:
+    def save_checkpoint(self, path: Optional[Path] = None, config: Optional[DotMap] = None) -> None:
         """Abstract method for saving model parameters to a pickle file.
 
         Args:
@@ -119,17 +119,13 @@ class AbstractTrainer(abc.ABC):
             Class object with restored weights.
         """
         try:
-            out_class = cls(
-                jobid=jobid, logger_path=logger_path, config=config, *args, **kwargs
-            )
+            out_class = cls(jobid=jobid, logger_path=logger_path, config=config, *args, **kwargs)
 
             if ckpt_path is None:
                 if len(config.checkpointing_path) > 0:
                     ckpt_path = config.checkpointing_path
                 else:
-                    logger.error(
-                        "Provide checkpointing path either directly or through the model config"
-                    )
+                    logger.error("Provide checkpointing path either directly or through the model config")
             checkpointer = PyTreeCheckpointer()
             out_class.model = checkpointer.restore(ckpt_path, item=out_class.model)
 
@@ -215,17 +211,15 @@ class MongeMapTrainer(AbstractTrainer):
         regularizer = partial(regularizer_fn, **regularizer.kwargs)
 
         # setup neural network model
-        model = models.MLP(dim_hidden=dim_hidden, is_potential=False, act_fn=nn.gelu)
+        model = MLP(dim_hidden=dim_hidden, is_potential=False, act_fn=nn.gelu)
 
         # setup optimizer and scheduler
         opt_fn = optim_factory[optim.name]
-        lr_scheduler = optax.cosine_decay_schedule(
-            init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2
-        )
+        lr_scheduler = optax.cosine_decay_schedule(init_value=optim.lr, decay_steps=num_train_iters, alpha=1e-2)
         optimizer = opt_fn(learning_rate=lr_scheduler, **optim.kwargs)
 
         # setup ott-jax solver
-        self.solver = map_estimator.MapEstimator(
+        self.solver = MongeGapEstimator(
             num_genes,
             fitting_loss=fitting_loss,
             regularizer=regularizer,
@@ -253,9 +247,7 @@ class MongeMapTrainer(AbstractTrainer):
 
     def transport(self, source: jnp.ndarray) -> jnp.ndarray:
         """Transports a batch of data using the learned model."""
-        return self.solver.state_neural_net.apply_fn(
-            {"params": self.solver.state_neural_net.params}, source
-        )
+        return self.solver.state_neural_net.apply_fn({"params": self.solver.state_neural_net.params}, source)
 
     @property
     def model(self) -> nn.Module:
@@ -294,20 +286,16 @@ class NeuralDualTrainer(AbstractTrainer):
             "lr": lr,
             "method": "dual",
         }
-        neural_f = models.ICNN(
-            dim_data=num_genes,
-            dim_hidden=dim_hidden,
-            gaussian_map_samples=(samples_source, samples_target),
+        neural_f = ICNN(
+            dim_data=num_genes, dim_hidden=dim_hidden, gaussian_map_samples=(samples_source, samples_target)
         )
-        neural_g = models.MLP(dim_hidden=dim_hidden)
+        neural_g = MLP(dim_hidden=dim_hidden)
 
-        lr_schedule = optax.cosine_decay_schedule(
-            init_value=lr, decay_steps=num_train_iters, alpha=1e-2
-        )
+        lr_schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=num_train_iters, alpha=1e-2)
         optimizer_f = optax.adamw(learning_rate=lr_schedule, b1=0.5, b2=0.5)
         optimizer_g = optax.adamw(learning_rate=lr_schedule, b1=0.9, b2=0.999)
 
-        self.neural_dual_solver = neuraldual.W2NeuralDual(
+        self.neural_dual_solver = W2NeuralDual(
             num_genes,
             neural_f,
             neural_g,
@@ -353,4 +341,5 @@ class NeuralDualTrainer(AbstractTrainer):
 
 
 loss_factory = {"sinkhorn": fitting_loss}
+regularizer_factory = {"monge": regularizer}
 regularizer_factory = {"monge": regularizer}

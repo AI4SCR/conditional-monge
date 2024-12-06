@@ -6,12 +6,12 @@ import jax.numpy as jnp
 import optax
 from flax.core import frozen_dict
 from jax.nn import initializers
-from ott.solvers.nn.layers import PosDefPotentials
-from ott.solvers.nn.models import (
-    ICNN,
-    ModelBase,
-    NeuralTrainState,
+from ott.neural.networks.icnn import ICNN
+from ott.neural.networks.layers.posdef import PosDefPotentials
+from ott.neural.networks.potentials import (
+    BasePotential,
     PotentialGradientFn_t,
+    PotentialTrainState,
     PotentialValueFn_t,
 )
 
@@ -129,9 +129,7 @@ class PICNN(ICNN):
         # self layers for hidden state u, to update z, all ~0
         wu = []
         for odim in units + [1]:
-            _wu = nn.Dense(
-                odim, use_bias=False, kernel_init=self.init_fn(self.init_std)
-            )
+            _wu = nn.Dense(odim, use_bias=False, kernel_init=self.init_fn(self.init_std))
             wu.append(_wu)
         self.wu = wu
 
@@ -145,9 +143,7 @@ class PICNN(ICNN):
             u = self.act_fn(self.w[i](u))
             t_u = jax.nn.softplus(self.wzu[i - 1](u))
             z = self.act_fn(
-                self.wz[i - 1](jnp.multiply(z, t_u))
-                + self.wx[i](jnp.multiply(x, self.wxu[i](u)))
-                + self.wu[i](u)
+                self.wz[i - 1](jnp.multiply(z, t_u)) + self.wx[i](jnp.multiply(x, self.wxu[i](u))) + self.wu[i](u)
             )
 
         z = (
@@ -163,11 +159,11 @@ class PICNN(ICNN):
         optimizer: optax.OptState,
         input_shape: Union[int, Tuple[int, ...]],
         **kwargs: Any,
-    ) -> NeuralTrainState:
+    ) -> PotentialTrainState:
         """Create initial `TrainState`."""
         condition = jnp.ones((1, self.cond_dim))
         params = self.init(rng, x=jnp.ones((1, input_shape)), c=condition)["params"]
-        return NeuralTrainState.create(
+        return PotentialTrainState.create(
             apply_fn=self.apply,
             params=params,
             tx=optimizer,
@@ -199,7 +195,7 @@ class PICNN(ICNN):
         return jax.vmap(jax.grad(self.potential_value_fn(params), argnums=0))
 
 
-class ConditionalMLP(ModelBase):
+class ConditionalMLP(BasePotential):
     dim_hidden: Sequence[int] = None
     dim_data: int = None
     dim_cond: int = None
@@ -223,12 +219,12 @@ class ConditionalMLP(ModelBase):
         rng: jnp.ndarray,
         optimizer: optax.OptState,
         **kwargs: Any,
-    ) -> NeuralTrainState:
+    ) -> PotentialTrainState:
         """Create initial `TrainState`."""
         c = jnp.ones((1, self.dim_cond))
         x = jnp.ones((1, self.dim_data))
         params = self.init(rng, x=x, c=c)["params"]
-        return NeuralTrainState.create(
+        return PotentialTrainState.create(
             apply_fn=self.apply,
             params=params,
             tx=optimizer,
@@ -238,7 +234,7 @@ class ConditionalMLP(ModelBase):
         )
 
 
-class DummyMLP(ModelBase):
+class DummyMLP(BasePotential):
     """A generic, typically not-convex (w.r.t input) MLP.
 
     Args:
@@ -286,12 +282,12 @@ class DummyMLP(ModelBase):
         rng: jnp.ndarray,
         optimizer: optax.OptState,
         **kwargs: Any,
-    ) -> NeuralTrainState:
+    ) -> PotentialTrainState:
         """Create initial `TrainState`."""
         c = jnp.ones((1, self.dim_cond))
         x = jnp.ones((1, self.dim_data))
         params = self.init(rng, x=x, c=c)["params"]
-        return NeuralTrainState.create(
+        return PotentialTrainState.create(
             apply_fn=self.apply,
             params=params,
             tx=optimizer,
@@ -301,7 +297,7 @@ class DummyMLP(ModelBase):
         )
 
 
-class ConditionalPerturbationNetwork(ModelBase):
+class ConditionalPerturbationNetwork(BasePotential):
     dim_hidden: Sequence[int] = None
     dim_data: int = None
     dim_cond: int = None  # Full dimension of all context variables concatenated
@@ -311,18 +307,14 @@ class ConditionalPerturbationNetwork(ModelBase):
     act_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu
     is_potential: bool = False
     layer_norm: bool = False
-    embed_cond_equal: bool = (
-        False  # Whether all context variables should be treated as set or not
-    )
+    embed_cond_equal: bool = False  # Whether all context variables should be treated as set or not
     context_entity_bonds: Iterable[Tuple[int, int]] = (
         (0, 10),
         (0, 11),
     )  # Start/stop index per modality
 
     @nn.compact
-    def __call__(
-        self, x: jnp.ndarray, c: jnp.ndarray, num_contexts: int = 2
-    ) -> jnp.ndarray:  # noqa: D102
+    def __call__(self, x: jnp.ndarray, c: jnp.ndarray, num_contexts: int = 2) -> jnp.ndarray:  # noqa: D102
         """
         Args:
             x (jnp.ndarray): The input data of shape bs x dim_data
@@ -336,17 +328,10 @@ class ConditionalPerturbationNetwork(ModelBase):
         n_input = x.shape[-1]
 
         # Chunk the inputs
-        contexts = [
-            c[:, e[0] : e[1]]
-            for i, e in enumerate(self.context_entity_bonds)
-            if i < num_contexts
-        ]
+        contexts = [c[:, e[0] : e[1]] for i, e in enumerate(self.context_entity_bonds) if i < num_contexts]
 
         # Backwards compatability for dim_cond_map
-        if (
-            not isinstance(self.dim_cond_map, Iterable)
-            and self.dim_cond_map is not None
-        ):
+        if not isinstance(self.dim_cond_map, Iterable) and self.dim_cond_map is not None:
             if not self.embed_cond_equal:
                 dim_cond_map = [self.dim_cond_map, 1]  # For sciplex backwards compat
             else:
@@ -362,21 +347,15 @@ class ConditionalPerturbationNetwork(ModelBase):
                 f"{self.context_entity_bonds} != {dim_cond_map}"
             )
 
-            layers = [
-                nn.Dense(dim_cond_map[i], use_bias=True) for i in range(len(contexts))
-            ]
-            embeddings = [
-                self.act_fn(layers[i](context)) for i, context in enumerate(contexts)
-            ]
+            layers = [nn.Dense(dim_cond_map[i], use_bias=True) for i in range(len(contexts))]
+            embeddings = [self.act_fn(layers[i](context)) for i, context in enumerate(contexts)]
             cond_embedding = jnp.concatenate(embeddings, axis=1)
         else:
             # We can process arbitrary number of contexts, all from the same modality,
             # via a permutation-invariant deep set layer.
             sizes = [c.shape[-1] for c in contexts]
             if not len(set(sizes)) == 1:
-                raise ValueError(
-                    f"For embedding a set, all contexts need same length, not {sizes}"
-                )
+                raise ValueError(f"For embedding a set, all contexts need same length, not {sizes}")
             layer = nn.Dense(dim_cond_map[0], use_bias=True)
             embeddings = [self.act_fn(layer(context)) for context in contexts]
             # Average along stacked dimension (alternatives like summing are possible)
@@ -399,12 +378,12 @@ class ConditionalPerturbationNetwork(ModelBase):
         rng: jnp.ndarray,
         optimizer: optax.OptState,
         **kwargs: Any,
-    ) -> NeuralTrainState:
+    ) -> PotentialTrainState:
         """Create initial `TrainState`."""
         c = jnp.ones((1, self.dim_cond))  # (n_batch, embed_dim)
         x = jnp.ones((1, self.dim_data))  # (n_batch, data_dim)
         params = self.init(rng, x=x, c=c)["params"]
-        return NeuralTrainState.create(
+        return PotentialTrainState.create(
             apply_fn=self.apply,
             params=params,
             tx=optimizer,
