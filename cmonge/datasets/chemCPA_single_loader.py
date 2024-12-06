@@ -91,7 +91,7 @@ class SciPlexCPAModule(SciPlexModule):
         self.degs_bool = [g in self.marker_genes for g in self.adata.var_names]
 
     def get_model_inputs_from_adata(self, adata, cell_idx, condition):
-        X = adata[cell_idx, :].X
+        x = adata[cell_idx, :].X
         if self.parent_celltype_to_idx:
             cell_type = jnp.asarray(
                 [
@@ -109,7 +109,7 @@ class SciPlexCPAModule(SciPlexModule):
             [self.degs_bool for i in range(len(cell_idx))], dtype="float32"
         )
 
-        return X, cell_type, drug_idx, degs
+        return x, cell_type, drug_idx, degs
 
     def get_loaders_by_type(
         self, split_type: str, batch_size: Optional[int] = None
