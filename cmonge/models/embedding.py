@@ -204,15 +204,9 @@ class ModeOfActionEmbedding(BaseEmbedding):
             values = jnp.asarray(row.values.astype("float"))
             self.embeddings[index] = values
 
-<<<<<<< HEAD
-    def __call__(self, condition: str):
-        if self.dose_split:
-            cond, dose = condition.split("-")
-=======
     def __call__(self, condition: str, dose_split: bool = True):
         if dose_split:
             dose = condition.split("-")[-1]
->>>>>>> 126512e (Handle '-' in drug names)
             condition = self.embeddings[condition]
             condition = jnp.append(condition, np.log(int(dose)))
             n_contexts = 2
