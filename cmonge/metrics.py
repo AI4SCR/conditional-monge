@@ -76,7 +76,7 @@ def wasserstein_distance(
     geom = PointCloud(target, transport, cost_fn=costs.Euclidean(), epsilon=epsilon)
     solver = jax.jit(solve)
     ot = solver(geom)
-    return ot.reg_ot_cost
+    return float(ot.reg_ot_cost)
 
 
 def fitting_loss(
@@ -95,7 +95,7 @@ def fitting_loss(
 
 def sinkhorn_div(target: jnp.ndarray, transport: jnp.ndarray) -> float:
     """Calculates the sinkhorn divergence between two measures."""
-    return fitting_loss(target, transport, 0.1)
+    return float(fitting_loss(target, transport, 0.1))
 
 
 def regularizer(
@@ -117,7 +117,7 @@ def regularizer(
 
 
 def eucledian_monge_gap(target: jnp.ndarray, transport: jnp.ndarray) -> float:
-    return regularizer(target, transport, 1, "euclidean")
+    return float(regularizer(target, transport, 1, "euclidean"))
 
 
 cost_factory = {"euclidean": costs.Euclidean()}
