@@ -129,7 +129,8 @@ class AbstractDataModule:
     def get_loaders_by_type(
         self, split_type: str, batch_size: Optional[int] = None
     ) -> Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]:
-        """Convert adata object into control and target iterators, subset based on the split type (train/valid/test)."""
+        """Convert adata object into control and target iterators,
+        subset based on the split type (train/valid/test)."""
         if split_type == "train":
             control_cells = self.control_train_cells
             target_cells = self.target_train_cells
@@ -406,9 +407,3 @@ class FourIModule(AbstractDataModule):
         else:
             self.encoder = lambda x: x
             self.decoder = lambda x: x
-
-
-DataModuleFactory = {
-    "4i": FourIModule,
-    "sciplex": SciPlexModule,
-}  # , "synthetic": SyntheticDosageModule}
