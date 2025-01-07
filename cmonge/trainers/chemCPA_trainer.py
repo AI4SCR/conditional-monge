@@ -4,6 +4,7 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Dict, Iterator, Optional, Tuple
 
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import optax
@@ -44,17 +45,16 @@ class ComPertTrainer(AbstractTrainer):
 
         self.key = jax.random.PRNGKey(self.config.seed)
         self.num_train_iters = self.config.num_train_iters
-        self.split_dose = self.config.embedding.get("split_dose", True)
         self.load_from_ckpt = self.config.checkpointing_args.get(
             "load_from_ckpt", False
         )
-        self.init_model(datamodule=datamodule)
+        self.setup(datamodule=datamodule)
         self.config_path = config_path
         self.logger_path = logger_path
 
-    def init_model(self, datamodule: ConditionalDataModule):
+    def setup(self, datamodule: ConditionalDataModule):
         # Initial drug embedding
-        embed_module = embed_factory[self.config.embedding.name]
+        embed_module = EmbeddingFactory[self.config.embedding.name]
         self.embedding_module = embed_module(
             datamodule=datamodule, **self.config.embedding
         )
@@ -591,9 +591,7 @@ class ComPertTrainer(AbstractTrainer):
         }  # Generate DL for sampled condition only
 
         loader_source, loader_target = condition_to_loaders[condition]
-        embeddings, n_contexts = self.embedding_module(
-            condition=condition, dose_split=self.split_dose
-        )
+        embeddings, n_contexts = self.embedding_module(condition=condition)
         source, source_cell_type, source_drug_idx, source_degs = next(loader_source)
         target, target_cell_type, target_drug_idx, target_degs = next(loader_target)
         return (
@@ -641,8 +639,8 @@ class ComPertTrainer(AbstractTrainer):
     def predict(
         self, source, target, cond_embeddings, num_contexts, train: bool = False
     ):
-        source, source_celltype, source_drugs = source
-        target, target_celltype, target_drugs = target
+        source, source_celltype, source_drugs, source_degs = source
+        target, target_celltype, target_drugs, target_degs = target
 
         x_hat, cell_drug_embedding, latent_basal, degs_pred = self.autoencoder.apply(
             {
@@ -714,9 +712,7 @@ class ComPertTrainer(AbstractTrainer):
         ):
             self.metrics[split_type] = {}
             for cond, loader in cond_to_loaders.items():
-                cond_embedding, n_contexts = self.embedding_module(
-                    cond, self.split_dose
-                )
+                cond_embedding, n_contexts = self.embedding_module(cond)
                 loader_source, loader_target = loader
 
                 self.metrics[split_type][cond] = {}
@@ -821,3 +817,20 @@ class ComPertTrainer(AbstractTrainer):
         )
         logger.info("Loaded ConditionalMongeTrainer from checkpoint")
         return out_class
+
+    @property
+    def model(self) -> nn.Module:
+        return {
+            "autoencoder": self.state_autoencoder,
+            "adverserial": self.state_adv_clfs,
+        }
+
+    @model.setter
+    def model(self, value: nn.Module):
+        """Setter for the model to be checkpointed."""
+        self.state_autoencoder = value["autoencoder"]
+        self.state_adv_clfs = value["adverserial"]
+
+    def transport(self):
+        """Implemented for compatibility"""
+        raise NotImplementedError
