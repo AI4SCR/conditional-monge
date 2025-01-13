@@ -15,8 +15,7 @@ pip install cmonge
 ```
 
 ## Development setup & installation
-If you would like to contribute to the package, we recommend to install gt4sd in editable mode inside your virtual environment.
-The package environment is managed  [poetry](https://python-poetry.org/docs/managing-environments/). 
+The package environment is managed by [poetry](https://python-poetry.org/docs/managing-environments/). 
 The code was tested in Python 3.10.
 ```sh
 pip install poetry
