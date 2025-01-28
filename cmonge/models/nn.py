@@ -6,12 +6,12 @@ import jax.numpy as jnp
 import optax
 from flax.core import frozen_dict
 from jax.nn import initializers
-from ott.solvers.nn.layers import PosDefPotentials
-from ott.solvers.nn.models import (
-    ICNN,
-    ModelBase,
-    NeuralTrainState,
+from ott.neural.networks.icnn import ICNN
+from ott.neural.networks.layers.posdef import PosDefPotentials
+from ott.neural.networks.potentials import (
+    BasePotential,
     PotentialGradientFn_t,
+    PotentialTrainState,
     PotentialValueFn_t,
 )
 
@@ -163,11 +163,11 @@ class PICNN(ICNN):
         optimizer: optax.OptState,
         input_shape: Union[int, Tuple[int, ...]],
         **kwargs: Any,
-    ) -> NeuralTrainState:
+    ) -> PotentialTrainState:
         """Create initial `TrainState`."""
         condition = jnp.ones((1, self.cond_dim))
         params = self.init(rng, x=jnp.ones((1, input_shape)), c=condition)["params"]
-        return NeuralTrainState.create(
+        return PotentialTrainState.create(
             apply_fn=self.apply,
             params=params,
             tx=optimizer,
@@ -199,7 +199,7 @@ class PICNN(ICNN):
         return jax.vmap(jax.grad(self.potential_value_fn(params), argnums=0))
 
 
-class ConditionalMLP(ModelBase):
+class ConditionalMLP(BasePotential):
     dim_hidden: Sequence[int] = None
     dim_data: int = None
     dim_cond: int = None
@@ -223,12 +223,12 @@ class ConditionalMLP(ModelBase):
         rng: jnp.ndarray,
         optimizer: optax.OptState,
         **kwargs: Any,
-    ) -> NeuralTrainState:
+    ) -> PotentialTrainState:
         """Create initial `TrainState`."""
         c = jnp.ones((1, self.dim_cond))
         x = jnp.ones((1, self.dim_data))
         params = self.init(rng, x=x, c=c)["params"]
-        return NeuralTrainState.create(
+        return PotentialTrainState.create(
             apply_fn=self.apply,
             params=params,
             tx=optimizer,
@@ -238,7 +238,7 @@ class ConditionalMLP(ModelBase):
         )
 
 
-class DummyMLP(ModelBase):
+class DummyMLP(BasePotential):
     """A generic, typically not-convex (w.r.t input) MLP.
 
     Args:
@@ -286,12 +286,12 @@ class DummyMLP(ModelBase):
         rng: jnp.ndarray,
         optimizer: optax.OptState,
         **kwargs: Any,
-    ) -> NeuralTrainState:
+    ) -> PotentialTrainState:
         """Create initial `TrainState`."""
         c = jnp.ones((1, self.dim_cond))
         x = jnp.ones((1, self.dim_data))
         params = self.init(rng, x=x, c=c)["params"]
-        return NeuralTrainState.create(
+        return PotentialTrainState.create(
             apply_fn=self.apply,
             params=params,
             tx=optimizer,
@@ -301,7 +301,7 @@ class DummyMLP(ModelBase):
         )
 
 
-class ConditionalPerturbationNetwork(ModelBase):
+class ConditionalPerturbationNetwork(BasePotential):
     dim_hidden: Sequence[int] = None
     dim_data: int = None
     dim_cond: int = None  # Full dimension of all context variables concatenated
@@ -399,12 +399,12 @@ class ConditionalPerturbationNetwork(ModelBase):
         rng: jnp.ndarray,
         optimizer: optax.OptState,
         **kwargs: Any,
-    ) -> NeuralTrainState:
+    ) -> PotentialTrainState:
         """Create initial `TrainState`."""
         c = jnp.ones((1, self.dim_cond))  # (n_batch, embed_dim)
         x = jnp.ones((1, self.dim_data))  # (n_batch, data_dim)
         params = self.init(rng, x=x, c=c)["params"]
-        return NeuralTrainState.create(
+        return PotentialTrainState.create(
             apply_fn=self.apply,
             params=params,
             tx=optimizer,

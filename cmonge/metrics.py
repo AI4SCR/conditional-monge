@@ -3,8 +3,8 @@ import jax.numpy as jnp
 import numpy as np
 from ott.geometry import costs
 from ott.geometry.pointcloud import PointCloud
-from ott.solvers.linear import sinkhorn
-from ott.solvers.nn import losses
+from ott.neural.methods.monge_gap import monge_gap_from_samples
+from ott.solvers.linear import solve
 from ott.tools.sinkhorn_divergence import sinkhorn_divergence
 from sklearn.metrics.pairwise import rbf_kernel
 
@@ -65,7 +65,7 @@ def wasserstein_distance(
     using the Sinkhorn algorithm on the regularized OT formulation.
     """
     geom = PointCloud(target, transport, cost_fn=costs.Euclidean(), epsilon=epsilon)
-    solver = jax.jit(sinkhorn.solve)
+    solver = jax.jit(solve)
     ot = solver(geom)
     return ot.reg_ot_cost
 
@@ -74,14 +74,14 @@ def fitting_loss(
     target: jnp.ndarray, transport: jnp.ndarray, epsilon_fitting: float
 ) -> float:
     """Calculates the sinkhorn divergence between two measures."""
-    out = sinkhorn_divergence(
+    divergence, output_comp = sinkhorn_divergence(
         PointCloud,
         target,
         transport,
         cost_fn=costs.Euclidean(),
         epsilon=epsilon_fitting,
     )
-    return out.divergence
+    return divergence
 
 
 def sinkhorn_div(target: jnp.ndarray, transport: jnp.ndarray) -> float:
@@ -97,7 +97,7 @@ def regularizer(
 ):
     """Calculates the Monge Gap between two measures."""
     cost_fn = cost_factory[cost]
-    gap = losses.monge_gap_from_samples(
+    gap = monge_gap_from_samples(
         target,
         transport,
         cost_fn=cost_fn,

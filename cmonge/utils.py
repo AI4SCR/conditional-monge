@@ -13,7 +13,7 @@ from flax import linen as nn
 
 
 def monge_get_source_target_transport(
-    trainer: "MongeMapTrainer",
+    trainer: "MongeGapTrainer",
     datamodule: "AbstractDataModule",
     n_samples=1,
     target=True,

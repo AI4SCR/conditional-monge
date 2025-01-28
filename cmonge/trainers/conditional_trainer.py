@@ -7,8 +7,7 @@ import optax
 from dotmap import DotMap
 from flax.core.scope import FrozenVariableDict
 from loguru import logger
-from ott.solvers.nn.conjugate_solvers import DEFAULT_CONJUGATE_SOLVER
-from ott.solvers.nn.models import ICNN
+from ott.neural.networks.icnn import ICNN
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
@@ -77,8 +76,6 @@ class ConditionalTrainer(AbstractTrainer):
             factors=factors,
             means=means,
         )
-
-        self.conjugate_solver = DEFAULT_CONJUGATE_SOLVER
 
         lr_schedule = optax.cosine_decay_schedule(
             init_value=self.lr, decay_steps=self.num_inner_iters, alpha=1e-2
@@ -395,5 +392,7 @@ class ConditionalTrainer(AbstractTrainer):
                 self.metrics[f"out-sample-{cond}"],
             )
             log_mean_metrics(self.metrics[f"out-sample-{cond}"])
+
+        create_or_update_logfile(self.logger_path, self.metrics)
 
         create_or_update_logfile(self.logger_path, self.metrics)
