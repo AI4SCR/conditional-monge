@@ -2,7 +2,7 @@ import collections
 import functools
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional, Tuple, Union
+from typing import Callable, Dict, Iterator, Optional, Tuple
 
 import flax.linen as nn
 import jax
@@ -11,10 +11,8 @@ import optax
 from dotmap import DotMap
 from flax.core import frozen_dict
 from flax.training import train_state
-from flax.training.orbax_utils import save_args_from_target
 from jax.tree_util import tree_map
 from loguru import logger
-from orbax.checkpoint import PyTreeCheckpointer
 
 from cmonge.datasets.conditional_loader import ConditionalDataModule
 from cmonge.evaluate import init_logger_dict, log_mean_metrics, log_metrics
