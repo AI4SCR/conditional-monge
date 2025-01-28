@@ -332,7 +332,6 @@ class ConditionalPerturbationNetwork(BasePotential):
             jnp.ndarray: _description_
         """
         n_input = x.shape[-1]
-
         # Chunk the inputs
         contexts = [
             c[:, e[0] : e[1]]
@@ -353,12 +352,10 @@ class ConditionalPerturbationNetwork(BasePotential):
             dim_cond_map = self.dim_cond_map
 
         if not self.embed_cond_equal:
-            # Each context is processed by a different layer,
-            # good for combining modalities
-            assert len(self.context_entity_bonds) == len(dim_cond_map), (
-                f"Length of context entity bonds and context map sizes has to match: "
-                f"{self.context_entity_bonds} != {dim_cond_map}"
-            )
+            # Each context is processed by a different layer, good for combining modalities
+            assert len(self.context_entity_bonds) == len(
+                dim_cond_map
+            ), f"Length of context entity bonds and context map sizes has to match: {self.context_entity_bonds} != {dim_cond_map}"
 
             layers = [
                 nn.Dense(dim_cond_map[i], use_bias=True) for i in range(len(contexts))
