@@ -84,7 +84,11 @@ class ComPertTrainer(AbstractTrainer):
         ae_lr_scheduler = optax.piecewise_constant_schedule(
             init_value=self.config.ae_optim.lr,
             boundaries_and_scales={
-                0 + i * self.config.ae_optim.step_size: self.config.ae_optim.gamma**i
+                0
+                + i
+                * self.config.ae_optim.step_size: (
+                    1 if i == 0 else self.config.ae_optim.gamma
+                )
                 for i in range(self.num_train_iters)
                 if i * self.config.ae_optim.step_size < self.num_train_iters
             },
@@ -99,8 +103,9 @@ class ComPertTrainer(AbstractTrainer):
             boundaries_and_scales={
                 0
                 + i
-                * self.config.adversary_optim.step_size: self.config.adversary_optim.gamma
-                ** i
+                * self.config.adversary_optim.step_size: (
+                    1 if i == 0 else self.config.adversary_optim.gamma
+                )
                 for i in range(self.num_train_iters)
                 if i * self.config.adversary_optim.step_size < self.num_train_iters
             },
