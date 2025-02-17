@@ -97,9 +97,9 @@ class ConditionalMongeTrainer(AbstractTrainer):
         split_type: str,
     ) -> Dict[str, jnp.ndarray]:
         """Generate a batch of condition and samples."""
-        condition_to_loaders = datamodule.get_loaders_by_type(split_type)
         condition = datamodule.sample_condition(split_type)
-        loader_source, loader_target = condition_to_loaders[condition]
+        loaders = datamodule.loaders[condition]
+        loader_source, loader_target = loaders.get_loaders_by_type(split_type)
         embeddings, n_contexts = self.embedding_module(condition=condition)
         return (
             {
