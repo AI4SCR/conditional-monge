@@ -150,8 +150,6 @@ class AETrainerModule:
             # Training step
             losses = []
             batch = self.generate_batch(datamodule, "train")
-            losses_np = np.stack(jax.device_get(losses))
-            avg_loss = losses_np.mean()
             logger.info(f"train/loss - epoch {epoch}: {avg_loss}")
 
             # Validation step
