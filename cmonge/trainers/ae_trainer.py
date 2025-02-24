@@ -131,6 +131,17 @@ class AETrainerModule:
         self.train_step = jax.jit(train_step)
         self.eval_step = jax.jit(eval_step)
 
+    def generate_batch(
+        self,
+        datamodule: ConditionalDataModule,
+        split_type: str,
+    ) -> Dict[str, jnp.ndarray]:
+        """Generate a batch of condition and samples."""
+        condition = datamodule.sample_condition(split_type)
+        loaders = datamodule.loaders[condition]
+        loader_source, loader_target = loaders.get_loaders_by_type(split_type)
+        return next(loader_target)
+
     def train(self, datamodule: AbstractDataModule):
         """Train model for n_epochs, save best model after each epoch."""
         logger.info("Training started.")
@@ -138,9 +149,7 @@ class AETrainerModule:
         for epoch in range(self.config.training.n_epochs):
             # Training step
             losses = []
-            for batch in datamodule.train_dataloaders():
-                self.state, loss = self.train_step(state=self.state, batch=batch)
-                losses.append(loss)
+            batch = generate_batch(datamodule, "train")
             losses_np = np.stack(jax.device_get(losses))
             avg_loss = losses_np.mean()
             logger.info(f"train/loss - epoch {epoch}: {avg_loss}")
