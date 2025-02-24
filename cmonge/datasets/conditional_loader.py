@@ -123,7 +123,8 @@ class ConditionalDataModule:
 
         self.set_conditions()
 
-    def get_loaders_by_type(self, split_type: str):
+    def get_loaders_by_type(self, split_type: str, setting="ae"):
+        # Setting for backwards compatibility
         assert split_type in ["train", "valid", "test"]
         type_to_conditions = {
             "train": self.train_conditions,
@@ -136,7 +137,7 @@ class ConditionalDataModule:
             for cond, loader in self.loaders.items()
             if cond in type_to_conditions[split_type]
         }
-        if self.data_config.ae:
+        if setting=="ae" and self.data_config.ae:
 
             def collapser_iter(split_type: str) -> Iterator[jnp.ndarray]:
                 while len(cond_to_loaders) > 0:
