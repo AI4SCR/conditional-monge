@@ -139,8 +139,8 @@ class AETrainerModule:
         """Generate a batch of condition and samples."""
         condition = datamodule.sample_condition(split_type)
         loaders = datamodule.loaders[condition]
-        loader_source, loader_target = loaders.get_loaders_by_type(split_type)
-        return next(loader_target)
+        loader = loaders.get_loaders_by_type(split_type)
+        return next(loader)
 
     def train(self, datamodule: AbstractDataModule):
         """Train model for n_epochs, save best model after each epoch."""
