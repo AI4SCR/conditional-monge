@@ -131,32 +131,35 @@ class AETrainerModule:
         self.train_step = jax.jit(train_step)
         self.eval_step = jax.jit(eval_step)
 
+    def generate_batch(
+        self,
+        datamodule: ConditionalDataModule,
+        split_type: str,
+    ) -> Dict[str, jnp.ndarray]:
+        """Generate a batch of condition and samples."""
+        condition = datamodule.sample_condition(split_type)
+        loaders = datamodule.loaders[condition]
+        loader = loaders.get_loaders_by_type(split_type)
+        return next(loader)
+
     def train(self, datamodule: AbstractDataModule):
         """Train model for n_epochs, save best model after each epoch."""
         logger.info("Training started.")
         best_eval = 1e6
         for epoch in range(self.config.training.n_epochs):
             # Training step
-            losses = []
-            for batch in datamodule.train_dataloaders():
-                self.state, loss = self.train_step(state=self.state, batch=batch)
-                losses.append(loss)
-            losses_np = np.stack(jax.device_get(losses))
-            avg_loss = losses_np.mean()
-            logger.info(f"train/loss - epoch {epoch}: {avg_loss}")
+            batch = self.generate_batch(datamodule, "train")
+            self.state, loss = self.train_step(state=self.state, batch=batch)
+            logger.info(f"train/loss - epoch {epoch}: {loss}")
 
             # Validation step
             if self.config.training.valid:
-                batch_sizes = []
-                losses = []
-                for batch in datamodule.valid_dataloaders():
-                    loss = self.eval_step(self.state, batch)
-                    losses.append(loss)
-                    batch_sizes.append(batch[0].shape[0])
-                losses_np = np.stack(jax.device_get(losses))
-                batch_sizes_np = np.stack(batch_sizes)
-                eval_loss = (losses_np * batch_sizes_np).sum() / batch_sizes_np.sum()
-                logger.info(f"valid/loss - epoch {epoch}: {eval_loss}")
+                batch = self.generate_batch(datamodule, "train")
+                loss = self.eval_step(self.state, batch)
+                # batch_sizes = batch.shape[0]
+                # eval_loss = (loss * batch_size).sum() / batch_size.sum()
+                eval_loss = loss
+                logger.info(f"valid/loss - epoch {epoch}: {loss}")
 
                 # Saving checkpoint if eval metric improved
                 if eval_loss < best_eval and self.config.training.cpkt:
