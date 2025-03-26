@@ -1,0 +1,839 @@
+import collections
+import json
+from functools import partial
+from pathlib import Path
+from typing import Callable, Dict, Iterator, Optional, Tuple
+
+import flax.linen as nn
+import jax
+import jax.numpy as jnp
+import optax
+import yaml
+from dotmap import DotMap
+from flax.core import frozen_dict
+from flax.training.orbax_utils import save_args_from_target
+from jax.tree_util import tree_map
+from loguru import logger
+from orbax.checkpoint import PyTreeCheckpointer
+
+from cmonge.datasets.conditional_loader import ConditionalDataModule
+from cmonge.metrics import r2
+from cmonge.models.chemCPA import AdversarialCPAModule, AutoEncoderchemCPA, TrainState
+from cmonge.models.embedding import EmbeddingFactory
+from cmonge.trainers.ot_trainer import AbstractTrainer, loss_factory
+from cmonge.utils import (
+    create_or_update_logfile,
+    jax_serializer,
+    load_config,
+    optim_factory,
+)
+
+
+class ComPertTrainer(AbstractTrainer):
+    def __init__(
+        self,
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        datamodule: ConditionalDataModule,
+        config_path: Path,
+    ) -> None:
+
+        super().__init__(jobid, logger_path)
+        self.config = config
+        self.datamodule = datamodule
+
+        self.key = jax.random.PRNGKey(self.config.seed)
+        self.num_train_iters = self.config.num_train_iters
+        self.load_from_ckpt = self.config.checkpointing_args.get(
+            "load_from_ckpt", False
+        )
+        self.setup(datamodule=datamodule)
+        self.config_path = config_path
+        self.logger_path = logger_path
+
+    def setup(self, datamodule: ConditionalDataModule):
+        # Initial drug embedding
+        embed_module = EmbeddingFactory[self.config.embedding.name]
+        self.embedding_module = embed_module(
+            datamodule=datamodule, **self.config.embedding
+        )
+
+        # setup loss functions
+        reconstruction_loss_fn = loss_factory[self.config.reconstruction_loss.name]
+        self.reconstruction_loss = partial(
+            reconstruction_loss_fn, **self.config.reconstruction_loss.kwargs
+        )
+
+        loss_adversary_drugs_fn = loss_factory[self.config.loss_adversary_drugs.name]
+        self.loss_adversary_drugs = partial(
+            loss_adversary_drugs_fn, **self.config.loss_adversary_drugs.kwargs
+        )
+
+        loss_adversary_covariates_fn = loss_factory[
+            self.config.loss_adversary_covariates.name
+        ]
+        self.loss_adversary_covariates = partial(
+            loss_adversary_covariates_fn, **self.config.loss_adversary_covariates.kwargs
+        )
+        loss_degs_fn = loss_factory[self.config.loss_degs.name]
+        self.loss_degs = partial(loss_degs_fn, **self.config.loss_degs.kwargs)
+
+        # setup optimizer and scheduler
+        opt_fn = optim_factory[self.config.ae_optim.name]
+        ae_lr_scheduler = optax.piecewise_constant_schedule(
+            init_value=self.config.ae_optim.lr,
+            boundaries_and_scales={
+                0
+                + i
+                * self.config.ae_optim.step_size: (
+                    1 if i == 0 else self.config.ae_optim.gamma
+                )
+                for i in range(self.num_train_iters)
+                if i * self.config.ae_optim.step_size < self.num_train_iters
+            },
+        )
+        ae_optimizer = opt_fn(
+            ae_lr_scheduler, weight_decay=self.config.ae_optim.weight_decay
+        )
+
+        opt_fn = optim_factory[self.config.adversary_optim.name]
+        adv_lr_scheduler = optax.piecewise_constant_schedule(
+            init_value=self.config.adversary_optim.lr,
+            boundaries_and_scales={
+                0
+                + i
+                * self.config.adversary_optim.step_size: (
+                    1 if i == 0 else self.config.adversary_optim.gamma
+                )
+                for i in range(self.num_train_iters)
+                if i * self.config.adversary_optim.step_size < self.num_train_iters
+            },
+        )
+        adv_drugs_optimizer = opt_fn(
+            adv_lr_scheduler, weight_decay=self.config.adversary_optim.weight_decay
+        )
+
+        # setup models
+        self.autoencoder = AutoEncoderchemCPA(
+            **self.config.ae,
+            cov_embed_enc_dims=[
+                self.config.adversary.cov_hidden_dims[-1],
+                self.config.adversary.cov_hidden_dims[0],
+            ],
+        )
+        self.adv_clfs = AdversarialCPAModule(**self.config.adversary)
+
+        # setup training states and step functions
+        self.key, rng1, rng2 = jax.random.split(self.key, 3)
+        self.state_autoencoder = self.autoencoder.create_train_state(rng1, ae_optimizer)
+        self.state_adv_clfs = self.adv_clfs.create_train_state(
+            rng2, adv_drugs_optimizer, self.config.ae.encoder_hidden_dims[-1]
+        )
+
+        # autoencoder, doser, drug embedding encoder and coveriate embedders all
+        # included in autoencoder optimization.
+        # The adversary covariates and adversary drugs are one optimizer
+
+        self.step_fn = self._get_step_fn()
+
+        if self.load_from_ckpt:
+            logger.info(
+                f"Resuming training from {self.config.checkpointing_args.checkpoint_dir}"
+            )
+            self._load_ckpt(self.config.checkpointing_args.checkpoint_dir)
+
+    def train(self, datamodule: ConditionalDataModule):
+        if self.load_from_ckpt:
+            with open(self.logger_path, "r") as f:
+                res = json.load(f)
+            logs = res["logs"]
+        else:
+            logs = collections.defaultdict(lambda: collections.defaultdict(list))
+
+        start_step = (
+            0
+            if self.state_autoencoder.step == 0
+            else self.state_autoencoder.step * self.config.grad_acc_steps * 2
+        )
+        try:
+            from tqdm import trange
+
+            tbar = trange(
+                start_step,
+                self.num_train_iters,
+                leave=True,
+            )
+        except ImportError:
+            tbar = range(
+                start_step,
+                self.num_train_iters,
+            )
+
+        ae_grads = tree_map(jnp.zeros_like, self.state_autoencoder.params)
+        adv_grads = tree_map(jnp.zeros_like, self.state_adv_clfs.params)
+        n_adv_steps = self.state_adv_clfs.step * self.config.grad_acc_steps
+        n_ae_steps = self.state_autoencoder.step * self.config.grad_acc_steps
+
+        logger.info(
+            f"Starting training with AE steps {n_ae_steps} and ADV steps {n_adv_steps}"
+        )
+        logger.info(f"Fist step should be: {start_step}")
+        for step in tbar:
+            # Step functions booleans
+            n = 25  # Logs after n grad steps of AE and ADV
+            is_logging_step = (step + 1) % (self.config.grad_acc_steps * 2 * n) == 0
+            is_adv_step = (step + 1) % self.config.adv_step_interval == 0
+            train_batch, condition = self.generate_batch(datamodule, "train")
+
+            valid_batch, _ = (
+                ({"num_contexts": None}, None)
+                if not is_logging_step
+                else self.generate_batch(datamodule, "valid")
+            )
+
+            # old_ae_params = self.state_autoencoder.params
+            # old_adv_params = self.state_adv_clfs.params
+
+            if is_adv_step:
+                is_gradient_acc_step = (
+                    n_adv_steps + 1
+                ) % self.config.grad_acc_steps == 0
+                self.state_adv_clfs, adv_grads, current_logs = self.step_fn(
+                    self.state_adv_clfs,
+                    grads=adv_grads,
+                    train_batch=train_batch,
+                    valid_batch=valid_batch,
+                    is_adv_step=is_adv_step,
+                    is_gradient_acc_step=is_gradient_acc_step,
+                    is_logging_step=is_logging_step,
+                    n_train_contexts=train_batch["num_contexts"],
+                    n_valid_contexts=valid_batch["num_contexts"],
+                )
+                n_adv_steps += 1
+            else:
+                is_gradient_acc_step = (
+                    n_ae_steps + 1
+                ) % self.config.grad_acc_steps == 0
+                self.state_autoencoder, ae_grads, current_logs = self.step_fn(
+                    self.state_autoencoder,
+                    grads=ae_grads,
+                    train_batch=train_batch,
+                    valid_batch=valid_batch,
+                    is_adv_step=is_adv_step,
+                    is_gradient_acc_step=is_gradient_acc_step,
+                    is_logging_step=is_logging_step,
+                    n_train_contexts=train_batch["num_contexts"],
+                    n_valid_contexts=valid_batch["num_contexts"],
+                )
+                n_ae_steps += 1
+
+            if is_logging_step:
+                if step > 0:
+                    assert self.state_adv_clfs.step == self.state_autoencoder.step
+                    self.save_checkpoint(self.config.checkpointing_args.checkpoint_dir)
+                    self.config.checkpointing_args.load_from_ckpt = True
+                    self.update_logs(current_logs, logs, tbar, is_adv_step)
+
+                    config = load_config(self.config_path)
+                    config.model = self.config
+                    config.data.seed = int(self.datamodule.key[0])
+
+                    with self.config_path.open("w") as f:
+                        yaml.dump(config.toDict(), f, default_flow_style=False)
+
+                    to_log = {"experiments": [], "logs": logs}
+                    with self.logger_path.open("w") as f:
+                        json.dump(to_log, f, indent=4, default=jax_serializer)
+
+        self.metrics["ott-logs"] = logs
+
+        return self.state_autoencoder, self.state_adv_clfs, logs
+
+    def _get_step_fn(self) -> Callable:
+        """Create a one step training and evaluation function."""
+
+        def compute_ae_loss(batch, x_hat):
+            # get mean and var for predicted gex
+            dim = x_hat.shape[1] // 2
+            mean = x_hat[:, :dim]
+            var = x_hat[:, dim:]
+
+            # compute the loss
+            reconstruction_loss = self.reconstruction_loss(
+                pred=mean, target=batch["target"], var=var
+            )
+
+            return reconstruction_loss
+
+        def compute_degs_loss(labels, logits):
+            loss = self.loss_degs(
+                labels=labels,
+                logits=logits,
+                alpha=self.config.loss_degs.alpha,
+                gamma=self.config.loss_degs.alpha,
+            )
+            return loss
+
+        def ae_loss_fn(
+            params: frozen_dict.FrozenDict,
+            batch_stats,
+            apply_fn: Callable,
+            batch: Dict[str, jnp.ndarray],
+            n_contexts: int,
+            train: bool = True,
+            latent_basal=None,  # for compatability
+            aux_grad=None,  # for compatability
+        ) -> Tuple[float, Dict[str, float]]:
+            """Loss function."""
+            # Predictions
+            outs = apply_fn(
+                {"params": params, "batch_stats": batch_stats},
+                x=batch["target"],
+                c=batch["condition"],
+                covs=batch["target_ct"],
+                n_contexts=n_contexts,
+                train=train,
+                mutable=["batch_stats"] if train else False,
+            )
+
+            (x_hat, cell_drug_embedding, latent_basal, degs_pred), batch_stats = (
+                outs if train else (outs, None)
+            )
+            outs = self.adv_clfs.apply(
+                {
+                    "params": self.state_adv_clfs.params,
+                    "batch_stats": self.state_adv_clfs.batch_stats,
+                },
+                latent_basal,
+                train=train,
+                mutable=["batch_stats"] if train else False,
+            )
+
+            (cov_pred, drug_pred), batch_stats = outs if train else (outs, None)
+            adv_drug_loss = self.loss_adversary_drugs(
+                labels=batch["target_didx"], probs=drug_pred
+            )
+            adv_cov_loss = self.loss_adversary_covariates(
+                labels=batch["target_ct"], probs=cov_pred
+            )
+
+            reconstruction_loss = compute_ae_loss(batch=batch, x_hat=x_hat)
+            degs_loss = compute_degs_loss(batch["target_degs"], degs_pred)
+
+            tot_loss = (
+                reconstruction_loss
+                - self.config.reg_adversary_drug * adv_drug_loss
+                - self.config.reg_adversary_cov * adv_cov_loss
+                + self.config.reg_degs_loss * degs_loss
+            )
+
+            # store training logs
+            loss_logs = {
+                "total_ae_loss": tot_loss,
+                "reconstruction_loss": reconstruction_loss,
+                "adv_drug_loss": adv_drug_loss,
+                "adv_cov_loss": adv_cov_loss,
+                "degs_loss": degs_loss,
+            }
+
+            return tot_loss, (loss_logs, batch_stats)
+
+        def adv_loss_fn(
+            params: frozen_dict.FrozenDict,
+            batch_stats,
+            apply_fn: Callable,
+            batch: Dict[str, jnp.ndarray],
+            latent_basal: jnp.ndarray,
+            adv_cov_grad_penalty: jnp.ndarray,
+            adv_drugs_grad_penalty: jnp.ndarray,
+            train: bool = True,
+            n_contexts=None,  # for compatability
+        ) -> Tuple[float, Dict[str, float]]:
+            """Loss function."""
+
+            outs = apply_fn(
+                {"params": params, "batch_stats": batch_stats},
+                latent_basal,
+                train=train,
+                mutable=["batch_stats"] if train else False,
+            )
+            (cov_pred, drug_pred), batch_stats = outs if train else (outs, None)
+
+            # compute the loss
+            adv_drug_loss = self.loss_adversary_drugs(batch["target_didx"], drug_pred)
+            adv_cov_loss = self.loss_adversary_covariates(batch["target_ct"], cov_pred)
+
+            adv_drugs_grad_penalty = jnp.square(adv_drugs_grad_penalty).mean()
+            adv_cov_grad_penalty = jnp.square(adv_cov_grad_penalty).mean()
+
+            tot_loss = (
+                adv_drug_loss
+                + adv_cov_loss
+                + self.config.penalty_adversary * adv_drugs_grad_penalty
+                + self.config.penalty_adversary * adv_cov_grad_penalty
+            )
+
+            # store training logs
+            loss_logs = {
+                "total_adv_loss": tot_loss,
+                "adv_drug_loss": adv_drug_loss,
+                "adv_cov_loss": adv_cov_loss,
+            }
+
+            return tot_loss, (loss_logs, batch_stats)
+
+        def aux_adv_loss_cov_fn(
+            params: frozen_dict.FrozenDict,
+            apply_fn: Callable,
+            latent_basal: jnp.ndarray,
+            train: bool = True,
+            batch=None,  # for compatability
+            n_contexts=None,  # for compatability
+        ) -> Tuple[float, Dict[str, float]]:
+            """Loss function."""
+
+            (cov_pred, drug_pred), batch_stats = apply_fn(
+                {"params": params},
+                latent_basal,
+                train=train,
+                mutable=["batch_stats"] if train else False,
+            )
+
+            return cov_pred.sum(), batch_stats
+
+        def aux_adv_loss_drugs_fn(
+            params: frozen_dict.FrozenDict,
+            apply_fn: Callable,
+            latent_basal: jnp.ndarray,
+            train: bool = True,
+            batch=None,  # for compatability
+            n_contexts=None,  # for compatability
+        ) -> Tuple[float, Dict[str, float]]:
+            """Loss function."""
+
+            (cov_pred, drug_pred), batch_stats = apply_fn(
+                {"params": params},
+                latent_basal,
+                train=train,
+                mutable=["batch_stats"] if train else False,
+            )
+
+            return drug_pred.sum(), batch_stats
+
+        @partial(jax.jit, static_argnums=[4, 5, 6, 7, 8])
+        def step_fn(
+            state_neural_net: TrainState,
+            grads: frozen_dict.FrozenDict,
+            train_batch: Dict[str, jnp.ndarray],
+            valid_batch: Optional[Dict[str, jnp.ndarray]],
+            is_logging_step: bool,
+            is_adv_step: bool,
+            is_gradient_acc_step: bool,
+            n_train_contexts: int = 2,
+            n_valid_contexts: int = 2,
+        ) -> Tuple[TrainState, frozen_dict.FrozenDict, Dict[str, float]]:
+            """Step function."""
+
+            # compute loss and gradients
+            if not is_adv_step:
+                grad_fn = jax.value_and_grad(ae_loss_fn, argnums=0, has_aux=True)
+                (_, (current_train_logs, batch_stats)), step_grads = grad_fn(
+                    state_neural_net.params,
+                    state_neural_net.batch_stats,
+                    state_neural_net.apply_fn,
+                    train_batch,
+                    n_train_contexts,
+                    train=True,
+                )
+                # logging step
+                current_logs = {"train": current_train_logs, "eval": {}}
+                if is_logging_step:
+                    _, (current_eval_logs, _) = ae_loss_fn(
+                        params=state_neural_net.params,
+                        batch_stats=state_neural_net.batch_stats,
+                        apply_fn=state_neural_net.apply_fn,
+                        batch=valid_batch,
+                        n_contexts=n_valid_contexts,
+                        train=False,
+                    )
+                    current_logs["eval"] = current_eval_logs
+            else:
+                # map samples with the fitted map
+                (x_hat, cell_drug_embedding, latent_basal, degs_pred), batch_stats = (
+                    self.autoencoder.apply(
+                        {"params": self.state_autoencoder.params},
+                        x=train_batch["target"],
+                        c=train_batch["condition"],
+                        covs=train_batch["target_ct"],
+                        train=True,
+                        mutable=["batch_stats"],
+                    )
+                )
+                aux_grad_fn = jax.value_and_grad(
+                    aux_adv_loss_cov_fn, argnums=2, has_aux=True
+                )
+                batch_stats, aux_grad_cov = aux_grad_fn(
+                    state_neural_net.params,
+                    state_neural_net.apply_fn,
+                    latent_basal,
+                    train=True,
+                )
+                aux_grad_fn = jax.value_and_grad(
+                    aux_adv_loss_drugs_fn, argnums=2, has_aux=True
+                )
+                batch_stats, aux_grad_drugs = aux_grad_fn(
+                    state_neural_net.params,
+                    state_neural_net.apply_fn,
+                    latent_basal,
+                    train=True,
+                )
+                grad_fn = jax.value_and_grad(adv_loss_fn, argnums=0, has_aux=True)
+
+                (_, (current_train_logs, batch_stats)), step_grads = grad_fn(
+                    state_neural_net.params,
+                    state_neural_net.batch_stats,
+                    state_neural_net.apply_fn,
+                    train_batch,
+                    latent_basal,
+                    aux_grad_cov,
+                    aux_grad_drugs,
+                    train=True,
+                )
+
+                # logging step
+                current_logs = {"train": current_train_logs, "eval": {}}
+                if is_logging_step:
+                    # Train ae loss
+                    reconstruction_loss = compute_ae_loss(
+                        batch=train_batch, x_hat=x_hat
+                    )
+                    degs_loss = compute_degs_loss(train_batch["target_degs"], degs_pred)
+
+                    tot_ae_loss = (
+                        reconstruction_loss
+                        - self.config.reg_adversary_drug
+                        * current_train_logs["adv_drug_loss"]
+                        - self.config.reg_adversary_cov
+                        * current_train_logs["adv_cov_loss"]
+                        + self.config.reg_degs_loss * degs_loss
+                    )
+                    current_logs["train"]["ae_loss"] = reconstruction_loss
+                    current_logs["train"]["degs_loss"] = degs_loss
+                    current_logs["train"]["total_ae_loss"] = tot_ae_loss
+
+                    # Evaluation step
+                    x_hat, cell_drug_embedding, latent_basal, degs_pred = (
+                        self.autoencoder.apply(
+                            {
+                                "params": self.state_autoencoder.params,
+                                "batch_stats": self.state_autoencoder.batch_stats,
+                            },
+                            x=valid_batch["target"],
+                            c=valid_batch["condition"],
+                            covs=valid_batch["target_ct"],
+                            train=False,
+                            mutable=False,
+                        )
+                    )
+                    _, (current_eval_logs, _) = adv_loss_fn(
+                        params=state_neural_net.params,
+                        batch_stats=state_neural_net.batch_stats,
+                        apply_fn=state_neural_net.apply_fn,
+                        batch=valid_batch,
+                        latent_basal=latent_basal,
+                        adv_cov_grad_penalty=jnp.array([0]),
+                        adv_drugs_grad_penalty=jnp.array([0]),
+                        train=False,
+                    )
+
+                    # Also log AE loss
+                    reconstruction_loss = compute_ae_loss(
+                        batch=valid_batch, x_hat=x_hat
+                    )
+                    degs_loss = compute_degs_loss(valid_batch["target_degs"], degs_pred)
+                    tot_ae_loss = (
+                        reconstruction_loss
+                        - self.config.reg_adversary_drug
+                        * current_eval_logs["adv_drug_loss"]
+                        - self.config.reg_adversary_cov
+                        * current_eval_logs["adv_cov_loss"]
+                        + self.config.reg_degs_loss * degs_loss
+                    )
+                    current_eval_logs["ae_loss"] = reconstruction_loss
+                    current_eval_logs["degs_loss"] = degs_loss
+                    current_eval_logs["total_ae_loss"] = tot_ae_loss
+
+                    current_logs["eval"] = current_eval_logs
+
+            # Accumulate gradients
+            grads = tree_map(lambda g, step_g: g + step_g, grads, step_grads)
+
+            # update state
+            if is_gradient_acc_step:
+                grads = tree_map(lambda g: g / self.config.grad_acc_steps, grads)
+                state_neural_net = state_neural_net.apply_gradients(grads=grads)
+                state_neural_net.replace(batch_stats=batch_stats)
+                # Reset gradients
+                grads = tree_map(jnp.zeros_like, grads)
+            return state_neural_net, grads, current_logs
+
+        return step_fn
+
+    def generate_batch(
+        self,
+        datamodule: ConditionalDataModule,
+        split_type: str,
+    ) -> Dict[str, jnp.ndarray]:
+        """Generate a batch of condition and samples."""
+        condition = datamodule.sample_condition(split_type)
+        condition_to_loaders = {
+            cond: loader.get_loaders_by_type(split_type)
+            for cond, loader in datamodule.loaders.items()
+            if (cond in datamodule.type_to_conditions[split_type]) and cond == condition
+        }  # Generate DL for sampled condition only
+
+        loader_source, loader_target = condition_to_loaders[condition]
+        embeddings, n_contexts = self.embedding_module(condition=condition)
+        source, source_cell_type, source_drug_idx, source_degs = next(loader_source)
+        target, target_cell_type, target_drug_idx, target_degs = next(loader_target)
+        return (
+            {
+                "source": source,
+                "source_ct": source_cell_type,
+                "source_didx": source_drug_idx,
+                "source_degs": source_degs,
+                "target": target,
+                "target_ct": target_cell_type,
+                "target_didx": target_drug_idx,
+                "target_degs": target_degs,
+                "condition": embeddings,
+                "num_contexts": n_contexts,
+            },
+            condition,
+        )
+
+    def update_logs(self, current_logs, logs, tbar, is_adv_step):
+        # store and print metrics if logging step
+        for log_key in current_logs:
+            if not isinstance(current_logs[log_key], dict):
+                continue
+            for metric_key in current_logs[log_key]:
+                logs[log_key][metric_key].append(current_logs[log_key][metric_key])
+
+        # update the tqdm bar if tqdm is available
+        if not isinstance(tbar, range):
+            if not is_adv_step:
+                postfix_str = (
+                    f"reconstruction_loss: {current_logs['train']['reconstruction_loss']:.4f}, "
+                    f"total_ae_loss: {current_logs['train']['total_ae_loss']:.4f}, "
+                    f"adv_drug_loss: {current_logs['train']['adv_drug_loss']:.4f}, "
+                    f"adv_cov_loss: {current_logs['train']['adv_cov_loss']:.4f}"
+                )
+            else:
+                postfix_str = (
+                    f"adv_drug_loss: {current_logs['train']['adv_drug_loss']:.4f}, "
+                    f"adv_cov_loss: {current_logs['train']['adv_cov_loss']:.4f}, "
+                    f"total_adv_loss: {current_logs['train']['total_adv_loss']:.4f}, "
+                    f"total_ae_loss: {current_logs['train']['total_ae_loss']:.4f}"
+                )
+            tbar.set_postfix_str(postfix_str)
+
+    def predict(
+        self, source, target, cond_embeddings, num_contexts, train: bool = False
+    ):
+        source, source_celltype, source_drugs, source_degs = source
+        target, target_celltype, target_drugs, target_degs = target
+
+        x_hat, cell_drug_embedding, latent_basal, degs_pred = self.autoencoder.apply(
+            {
+                "params": self.state_autoencoder.params,
+                "batch_stats": self.state_autoencoder.batch_stats,
+            },
+            x=source,
+            c=cond_embeddings,
+            covs=target_celltype,
+            n_contexts=num_contexts,
+            train=train,
+            mutable=["batch_stats"] if train else False,
+        )
+
+        return x_hat
+
+    def evaluate(
+        self,
+        datamodule: ConditionalDataModule,
+        identity: bool = False,
+        n_samples: int = 9,
+    ) -> None:
+        """Evaluate a trained model on a validation set and save the metrics to a json file."""
+
+        def evaluate_condition(
+            loader_source: Iterator[jnp.ndarray],
+            loader_target: Iterator[jnp.ndarray],
+            cond_embeddings: jnp.ndarray,
+            metrics: str,
+            n_contexts,
+        ):
+            for enum, (source, target) in enumerate(zip(loader_source, loader_target)):
+                if not identity:
+                    pred_m_v = self.predict(
+                        source, target, cond_embeddings, n_contexts, train=False
+                    )
+                    dim = int(pred_m_v.shape[1] / 2)
+                    pred_m = pred_m_v[:, :dim]
+                    pred_v = pred_m_v[:, dim:]
+                else:
+                    pred_m_v = source[0]
+                if datamodule.marker_idx:
+                    target = target[0][:, datamodule.marker_idx]
+                    if identity:
+                        pred_m_v = pred_m_v[:, datamodule.marker_idx]
+                        pred_m = pred_m_v.mean(axis=0)
+                        pred_v = pred_m_v.var(axis=0)
+                    else:
+                        pred_m = pred_m[:, datamodule.marker_idx]
+                        pred_v = pred_v[:, datamodule.marker_idx]
+                if not identity:
+                    pred_m = pred_m.mean(axis=0)
+                    pred_v = pred_v.mean(axis=0)
+
+                target_m = target.mean(axis=0)
+                target_v = target.var(axis=0)
+
+                metrics["r2_mean"].append(r2(target_m, pred_m))
+                metrics["r2_var"].append(r2(target_v, pred_v))
+
+                if enum > n_samples:
+                    break
+
+        def evaluate_split(
+            cond_to_loaders: Dict[
+                str, Tuple[Iterator[jnp.ndarray], Iterator[jnp.ndarray]]
+            ],
+            split_type: str,
+        ):
+            self.metrics[split_type] = {}
+            for cond, loader in cond_to_loaders.items():
+                cond_embedding, n_contexts = self.embedding_module(cond)
+                loader_source, loader_target = loader
+
+                self.metrics[split_type][cond] = {}
+                self.metrics[split_type][cond]["drug"] = datamodule.drug_condition
+                self.metrics[split_type][cond]["r2_mean"] = []
+                self.metrics[split_type][cond]["r2_var"] = []
+                self.metrics[split_type][cond]["mean_statistics"] = {}
+
+                evaluate_condition(
+                    loader_source,
+                    loader_target,
+                    cond_embedding,
+                    self.metrics[split_type][cond],
+                    n_contexts,
+                )
+                self.metrics[split_type][cond]["mean_statistics"]["mean_r2_mean"] = (
+                    float(
+                        sum(self.metrics[split_type][cond]["r2_mean"])
+                        / len(self.metrics[split_type][cond]["r2_mean"])
+                    )
+                )
+                self.metrics[split_type][cond]["mean_statistics"]["mean_r2_var"] = (
+                    float(
+                        sum(self.metrics[split_type][cond]["r2_var"])
+                        / len(self.metrics[split_type][cond]["r2_var"])
+                    )
+                )
+
+        # Log in test set if present, otherwise valid otherwise train
+        if self.datamodule.data_config.split[2] > 0:
+            logger.info("Evaluating on test set")
+            cond_to_loaders = datamodule.test_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="test-set",
+            )
+        elif self.datamodule.data_config.split[1] > 0:
+            logger.info("Evaluating on validation set")
+            cond_to_loaders = datamodule.valid_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="valid-set",
+            )
+        else:
+            logger.info("Evaluating on train set")
+            cond_to_loaders = datamodule.train_dataloaders()
+            evaluate_split(
+                cond_to_loaders=cond_to_loaders,
+                split_type="train-set",
+            )
+
+        create_or_update_logfile(self.logger_path, self.metrics)
+
+    def save_checkpoint(self, path: Path) -> None:
+        ae_ckpt = self.state_autoencoder
+        adv_ckpt = self.state_adv_clfs
+
+        checkpointer = PyTreeCheckpointer()
+        save_args = save_args_from_target(ae_ckpt)
+        checkpointer.save(
+            Path(path) / "autoencoder", ae_ckpt, save_args=save_args, force=True
+        )
+
+        checkpointer = PyTreeCheckpointer()
+        save_args = save_args_from_target(adv_ckpt)
+        checkpointer.save(
+            Path(path) / "adv_clfs", adv_ckpt, save_args=save_args, force=True
+        )
+
+    def _load_ckpt(self, ckpt_path):
+        checkpointer = PyTreeCheckpointer()
+        self.state_autoencoder = checkpointer.restore(
+            Path(ckpt_path) / "autoencoder", item=self.state_autoencoder
+        )
+        checkpointer = PyTreeCheckpointer()
+        self.state_adv_clfs = checkpointer.restore(
+            Path(ckpt_path) / "adv_clfs", item=self.state_adv_clfs
+        )
+
+    @classmethod
+    def load_checkpoint(
+        cls,
+        jobid: int,
+        logger_path: Path,
+        config: DotMap,
+        datamodule: ConditionalDataModule,
+        ckpt_path: Path,
+    ) -> None:
+        out_class = cls(
+            jobid=jobid,
+            logger_path=logger_path,
+            config=config,
+            datamodule=datamodule,
+        )
+        checkpointer = PyTreeCheckpointer()
+        out_class.state_autoencoder = checkpointer.restore(
+            Path(ckpt_path) / "autoencoder", item=out_class.state_autoencoder
+        )
+        checkpointer = PyTreeCheckpointer()
+        out_class.state_adv_clfs = checkpointer.restore(
+            Path(ckpt_path) / "adv_clfs", item=out_class.state_adv_clfs
+        )
+        logger.info("Loaded ConditionalMongeTrainer from checkpoint")
+        return out_class
+
+    @property
+    def model(self) -> nn.Module:
+        return {
+            "autoencoder": self.state_autoencoder,
+            "adverserial": self.state_adv_clfs,
+        }
+
+    @model.setter
+    def model(self, value: nn.Module):
+        """Setter for the model to be checkpointed."""
+        self.state_autoencoder = value["autoencoder"]
+        self.state_adv_clfs = value["adverserial"]
+
+    def transport(self):
+        """Implemented for compatibility"""
+        raise NotImplementedError
