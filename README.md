@@ -84,12 +84,11 @@ git checkout cmonge_checkpoint_loading
 ## Citation
 If you use the package, please cite:
 ```bib
-@inproceedings{
-  harsanyi2024learning,
-  title={Learning Drug Perturbations via Conditional Map Estimators},
-  author={Benedek Harsanyi and Marianna Rapsomaniki and Jannis Born},
-  booktitle={ICLR 2024 Workshop on Machine Learning for Genomics Explorations},
-  year={2024},
-  url={https://openreview.net/forum?id=FE7lRuwmfI}
+@article{driessen2025towards,
+  title={Towards generalizable single-cell perturbation modeling via the Conditional Monge Gap},
+  author={Driessen, Alice and Harsanyi, Benedek and Rapsomaniki, Marianna and Born, Jannis},
+  journal={arXiv preprint arXiv:2504.08328},
+  note={Preliminary version at ICLR 2024 Workshop on Machine Learning for Genomics Explorations}
+  year={2025}
 }
 ```
