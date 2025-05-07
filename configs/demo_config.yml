@@ -1,0 +1,77 @@
+model:
+  method: monge
+
+  fitting_loss:
+    name: sinkhorn
+    kwargs:
+      epsilon_fitting: 1
+
+  regularizer:
+    name: monge
+    kwargs:
+      epsilon_regularizer: 1.0e-2
+      cost: euclidean
+
+  optim:
+    lr: 1.0e-4
+    name: adamw
+    kwargs:
+      weight_decay: 1.0e-5
+
+  mlp:
+    dim_hidden: [64, 64, 64, 64]
+    dim_data: 50
+    context_entity_bonds: 
+    - [0,194]
+    - [0,195]
+    dim_cond: 195
+    dim_cond_map: 50
+
+  embedding:
+    name: rdkit
+    smile_path: data/lincs_trapnell.smiles
+    drug_to_smile_path: data/trapnell_drugs_smiles.csv
+    model_dir: models/embed/demo/
+    checkpoint: false
+
+  num_train_iters: 100
+  seed: 42
+  
+
+data:
+   name: sciplex
+   file_path: data/dummy_data.h5ad
+   batch_size: 512
+   split: [0.8, 0.2, 0.0]
+   drug_col: drug-dose
+   drug_condition: abexinostat-10
+   control_condition: control-0
+   seed: 42
+   ae: False
+   reduction: ae
+   ae_config_path: configs/autoencoder-demo.yml
+
+condition:
+  mode: homogeneous
+  conditions: [abexinostat-10, belinostat-10, dacinostat-10]
+  split: [0.8, 0.2, 0.0]
+
+ae:
+   model:
+      hidden_dims: [512, 512]
+      latent_dim: 50
+      data_dim: 100
+      seed: 1
+      act_fn: gelu
+
+   optim:
+      lr: 1.0e-4
+      optimizer: adamw
+      kwargs:
+         weight_decay: 1.0e-5
+
+   training:
+      n_epochs: 50
+      valid: false
+      ckpt: false
+      model_dir: /Users/alicedriessen/Projects/conditional-monge/models/demo/
