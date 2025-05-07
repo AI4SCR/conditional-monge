@@ -7,7 +7,6 @@ from cmonge.trainers.ae_trainer import AETrainerModule
 from cmonge.trainers.conditional_monge_trainer import ConditionalMongeTrainer
 from cmonge.utils import load_config
 
-
 logger_path = "logs/demo_logs.yml"
 config_path = "configs/demo_config.yml"
 
