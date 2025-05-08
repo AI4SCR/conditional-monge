@@ -1,0 +1,30 @@
+data:
+   name: sciplex
+   file_path: data/dummy_data.h5ad
+   batch_size: 512
+   split: [0.8, 0.2]
+   seed: 42
+   drug_col: drug-dose
+   drug_condition: abexinostat-10
+   control_condition: control-0
+   ae: true
+
+conditions: [abexinostat-10, belinostat-10, dacinostat-10]
+
+model:
+   hidden_dims: [512, 512]
+   latent_dim: 50
+   data_dim: 100
+   seed: 42
+   act_fn: gelu
+
+optim:
+   lr: 1.0e-4
+   optimizer: adamw
+   kwargs:
+      weight_decay: 1.0e-5
+
+training:
+  n_epochs: 50
+  ckpt: false
+  model_dir: /Users/alicedriessen/Projects/conditional-monge/models/demo/
