@@ -353,7 +353,7 @@ class NeuralDualTrainer(AbstractTrainer):
             self.metrics["ottlogs"] = logs
             logger.info("Training finished")
 
-    def transport(self, source: jnp.ndarray, num_contexts: None) -> jnp.ndarray:
+    def transport(self, source: jnp.ndarray) -> jnp.ndarray:
         """Transports a batch of data using the Brenier formula."""
         return self.potentials.transport(source)
 
