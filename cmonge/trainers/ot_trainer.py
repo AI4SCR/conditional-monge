@@ -199,7 +199,7 @@ class MongeGapTrainer(AbstractTrainer):
         fitting_loss: Dict[str, Any],
         regularizer: Dict[str, Any],
         optim: Dict[str, Any],
-        checkpointing_path: None,  # For compatability with base class
+        checkpointing_path: Optional[str] = None,  # For compatibility with base class
     ) -> None:
         """Initializes models and optimizers."""
         self.metrics["params"] = {
