@@ -255,7 +255,7 @@ class MongeGapTrainer(AbstractTrainer):
         self.metrics["ottlogs"] = logs
         logger.info("Training finished.")
 
-    def transport(self, source: jnp.ndarray, num_contexts=None) -> jnp.ndarray:
+    def transport(self, source: jnp.ndarray) -> jnp.ndarray:
         """Transports a batch of data using the learned model."""
         return self.solver.state_neural_net.apply_fn(
             {"params": self.solver.state_neural_net.params}, source
@@ -314,7 +314,7 @@ class NeuralDualTrainer(AbstractTrainer):
             dim_hidden=dim_hidden,
             gaussian_map_samples=(samples_source, samples_target),
         )
-        neural_g = MLP(dim_hidden=dim_hidden)
+        neural_g = PotentioalMLP(dim_hidden=dim_hidden)
 
         lr_schedule = optax.cosine_decay_schedule(
             init_value=lr, decay_steps=num_train_iters, alpha=1e-2
