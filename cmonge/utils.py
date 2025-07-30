@@ -87,7 +87,7 @@ def monge_get_source_target_transport(
             )
 
         if transport:
-            if num_contexts==0:
+            if num_contexts == 0:
                 trans = trainer.transport(source_expr)
             else:
                 trans = trainer.transport(source_expr, num_contexts=num_contexts)

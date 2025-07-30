@@ -8,12 +8,10 @@ from flax.core import frozen_dict
 from jax.nn import initializers
 from ott.neural.networks.icnn import ICNN
 from ott.neural.networks.layers.posdef import PosDefPotentials
-from ott.neural.networks.potentials import (
-    BasePotential,
-    PotentialGradientFn_t,
-    PotentialTrainState,
-    PotentialValueFn_t,
-)
+from ott.neural.networks.potentials import (BasePotential,
+                                            PotentialGradientFn_t,
+                                            PotentialTrainState,
+                                            PotentialValueFn_t)
 
 
 class PICNN(ICNN):

@@ -18,12 +18,8 @@ from ott.neural.networks.icnn import ICNN
 from ott.neural.networks.potentials import PotentialMLP
 
 from cmonge.datasets.single_loader import AbstractDataModule
-from cmonge.evaluate import (
-    init_logger_dict,
-    log_mean_metrics,
-    log_metrics,
-    log_point_clouds,
-)
+from cmonge.evaluate import (init_logger_dict, log_mean_metrics, log_metrics,
+                             log_point_clouds)
 from cmonge.metrics import fitting_loss, regularizer
 from cmonge.utils import create_or_update_logfile, optim_factory
 
