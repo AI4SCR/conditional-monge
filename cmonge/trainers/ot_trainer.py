@@ -15,7 +15,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 from ott.neural.methods.monge_gap import MongeGapEstimator
 from ott.neural.methods.neuraldual import W2NeuralDual
 from ott.neural.networks.icnn import ICNN
-from ott.neural.networks.potentials import MLP
+from ott.neural.networks.potentials import PotentialMLP
 
 from cmonge.datasets.single_loader import AbstractDataModule
 from cmonge.evaluate import (
@@ -199,6 +199,7 @@ class MongeGapTrainer(AbstractTrainer):
         fitting_loss: Dict[str, Any],
         regularizer: Dict[str, Any],
         optim: Dict[str, Any],
+        checkpointing_path: Optional[str] = None,  # For compatibility with base class
     ) -> None:
         """Initializes models and optimizers."""
         self.metrics["params"] = {
@@ -218,7 +219,7 @@ class MongeGapTrainer(AbstractTrainer):
         regularizer = partial(regularizer_fn, **regularizer.kwargs)
 
         # setup neural network model
-        model = MLP(dim_hidden=dim_hidden, is_potential=False, act_fn=nn.gelu)
+        model = PotentialMLP(dim_hidden=dim_hidden, is_potential=False, act_fn=nn.gelu)
 
         # setup optimizer and scheduler
         opt_fn = optim_factory[optim.name]
@@ -313,7 +314,7 @@ class NeuralDualTrainer(AbstractTrainer):
             dim_hidden=dim_hidden,
             gaussian_map_samples=(samples_source, samples_target),
         )
-        neural_g = MLP(dim_hidden=dim_hidden)
+        neural_g = PotentialMLP(dim_hidden=dim_hidden)
 
         lr_schedule = optax.cosine_decay_schedule(
             init_value=lr, decay_steps=num_train_iters, alpha=1e-2

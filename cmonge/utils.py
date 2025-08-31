@@ -20,6 +20,7 @@ def monge_get_source_target_transport(
     source=True,
     transport=True,
     batch_size: int = None,
+    num_contexts: int = 2,
 ):
     if batch_size is None:
         batch_size = datamodule.batch_size
@@ -86,7 +87,10 @@ def monge_get_source_target_transport(
             )
 
         if transport:
-            trans = trainer.transport(source_expr, num_contexts=2)
+            if num_contexts == 0:
+                trans = trainer.transport(source_expr)
+            else:
+                trans = trainer.transport(source_expr, num_contexts=num_contexts)
             trans = datamodule.decoder(trans)
             trans_meta = cond_meta.copy()
             trans_meta["dtype"] = "transport"
