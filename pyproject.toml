@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cmonge"
-version = "0.1.1"
+version = "0.1.2"
 description = "Extension of the Monge Gap to learn conditional optimal transport maps"
 authors = ["Alice Driessen <adr@zurich.ibm.com>", "Benedek Harsanyi <hben.0204@gmail.com>", "Jannis Born <jab@zurich.ibm.com>"]
 readme = "README.md"
